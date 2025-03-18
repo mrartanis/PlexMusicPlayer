@@ -1,0 +1,7 @@
+PyQt6>=6.4.0
+plexapi>=4.15.0
+python-dotenv>=0.19.0
+pygame>=2.5.0
+requests
+pyobjc-framework-MediaPlayer; sys_platform == 'darwin'
+pyobjc-framework-Cocoa; sys_platform == 'darwin' 
