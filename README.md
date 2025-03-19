@@ -2,6 +2,8 @@
 
 A modern music player for Plex Media Server with a beautiful UI and macOS Media Center integration.
 
+CAUTON! AI-generated
+
 ## Features
 
 - 🎵 Beautiful and modern UI with dark theme
