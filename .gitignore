@@ -13,7 +13,6 @@ dist/
 build/
 *.egg-info/
 *.egg
-.eggs/
 
 # IDE specific files
 .idea/
