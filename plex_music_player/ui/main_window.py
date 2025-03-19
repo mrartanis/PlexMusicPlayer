@@ -26,6 +26,7 @@ class MainWindow(QMainWindow):
         self.player = Player()
         self.player.playback_state_changed.connect(self._on_playback_state_changed)
         self.player.track_changed.connect(self.update_playback_ui)
+        self.player.track_changed.connect(self.update_playlist_selection)
         
         # Try to connect automatically at startup
         try:

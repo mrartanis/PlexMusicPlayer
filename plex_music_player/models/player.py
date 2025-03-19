@@ -262,10 +262,12 @@ class Player(QObject):
         """Internal implementation of track playback"""
         try:
             # Stop playback before clearing the buffer
-            self._player.stop()  # Stop playback if it's currently playing
+            if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+                self._player.stop()  # Stop playback if it's currently playing
             
             # Clear buffer before playing new track
-            self.buffer.close()  # Close buffer if it's open
+            if self.buffer.isOpen():
+                self.buffer.close()  # Close buffer if it's open
             self.buffer = QBuffer()  # Create a new buffer instance
             self.buffer.open(QIODevice.OpenModeFlag.ReadWrite)  # Open buffer for writing
 
@@ -299,9 +301,6 @@ class Player(QObject):
             
             self.buffer.seek(0)
             self._player.setSourceDevice(self.buffer)
-            
-            # Debug: Print buffer state
-
             
             print("Starting playback...")
             self._player.play()
@@ -400,13 +399,21 @@ class Player(QObject):
             self.current_playlist_index += 1
             self.current_track = self.playlist[self.current_playlist_index]
             self._player.stop()  # Stop playback before playing the next track
-            return self._play_track_impl()
+            success = self._play_track_impl()
+            if success:
+                # Notify the main window to update the playlist selection
+                self.track_changed.emit()  # Emit signal to update UI
+            return success
         elif self.current_album and self.tracks:
             current_index = self.tracks.index(self.current_track)
             if current_index < len(self.tracks) - 1:
                 self.current_track = self.tracks[current_index + 1]
                 self._player.stop()  # Stop playback before playing the next track
-                return self._play_track_impl()
+                success = self._play_track_impl()
+                if success:
+                    # Notify the main window to update the playlist selection
+                    self.track_changed.emit()  # Emit signal to update UI
+                return success
         return False
 
     def play_previous_track(self) -> bool:
@@ -441,7 +448,6 @@ class Player(QObject):
         """Handler for playback state change"""
         print(f"Playback state changed: {state}")  # Debug: Print playback state change
         if state == QMediaPlayer.PlaybackState.StoppedState:
-
             current_pos = self.get_current_position()
             track_duration = self.current_track.duration / 1000.0  # Duration in seconds
             
