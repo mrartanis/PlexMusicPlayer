@@ -2,6 +2,8 @@
 
 A modern music player for Plex Media Server with a beautiful UI and macOS Media Center integration.
 
+![Screenshot](screenshot.png)
+
 CAUTON! AI-generated
 
 Should work on OSX, windows and linux.
@@ -41,11 +43,9 @@ Tested only on osx 15 with arm processor.
 
 ## Requirements
 
-- Python 3.8+
-- macOS 10.15+
+- Python 3.11 (tested on)
 - Plex Media Server
 - PyQt6
-- pygame
 - plexapi
 - requests
 
@@ -72,13 +72,13 @@ pip install -r requirements.txt
 
 1. Run the application:
 ```bash
-python -m plex_music_player
+python -m plex_music_player.main
 ```
 
 2. On first run, enter your Plex server details:
    - Server URL (e.g., http://localhost:32400)
    - Username
-   - Password
+   - Token
 
 3. The application will connect to your Plex server and display your music library.
 
@@ -108,4 +108,4 @@ The player integrates with macOS Media Center, providing:
 
 ## License
 
-MIT License - feel free to use this project as you wish. 
+feel free to use this project as you wish. 
