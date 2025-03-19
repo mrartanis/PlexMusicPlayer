@@ -4,14 +4,15 @@ from typing import Optional, List, Tuple
 from plexapi.server import PlexServer
 from plexapi.audio import Track, Album, Artist
 from plexapi.exceptions import NotFound
-from PyQt6.QtCore import QObject, pyqtSignal
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QMediaFormat
+from PyQt6.QtCore import QObject, pyqtSignal, QBuffer, QIODevice, QTimer
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from plex_music_player.lib.utils import load_cover_image
-import pygame
 import tempfile
 import requests
 import random
 import sys
+from io import BytesIO
+
 
 if sys.platform == 'darwin':
     from Foundation import NSObject, NSMutableDictionary
@@ -97,6 +98,10 @@ class Player(QObject):
         self._player.positionChanged.connect(self._on_position_changed)
         self._player.durationChanged.connect(self._on_duration_changed)
         self._player.playbackStateChanged.connect(self._on_playback_state_changed)
+        self._player.errorOccurred.connect(self._on_error_occurred)  # Connect errorOccurred signal
+        
+        # Initialize buffer
+        self.buffer = QBuffer()
         
         # Plex data
         self.plex: Optional[PlexServer] = None
@@ -109,12 +114,14 @@ class Player(QObject):
         self.playlist: List[Track] = []
         self.current_playlist_index: int = -1
         self.auto_play: bool = True  # Enable auto-play by default
-        pygame.mixer.init()
 
         # Initialize macOS Media Center integration
         if sys.platform == 'darwin':
             self.media_center_delegate = MediaCenterDelegate.alloc().init()
             self.media_center_delegate.set_player(self)
+
+        # Last known position
+        self._last_position = 0
 
     def connect(self, url: str, token: str) -> None:
         """Connects to Plex server"""
@@ -195,32 +202,18 @@ class Player(QObject):
         except Exception:
             return []
 
-    def download_track(self, track: Track) -> str:
-        """Downloads the track completely before playing"""
-        url = track.getStreamURL()
-        response = requests.get(url, stream=True)
-        response.raise_for_status()
-
-        temp_file = tempfile.NamedTemporaryFile(delete=False)
-        with open(temp_file.name, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-
-        return temp_file.name
-
     def play_track(self, track_index: int) -> bool:
-        """Plays the track at the given index"""
-        if 0 <= track_index < len(self.playlist):
-            self.current_playlist_index = track_index
-            self.current_track = self.playlist[track_index]
-            
-            # Download track before playing
-            track_path = self.download_track(self.current_track)
-            self._player.setSource(QMediaFormat.fromLocalFile(track_path))
-            self._player.play()
-            self._update_media_center()
-            return True
-        return False
+        """Plays a track"""
+        if not self.plex or not self.current_album or track_index < 0 or track_index >= len(self.tracks):
+            return False
+        try:
+            self.current_track = self.tracks[track_index]
+            success = self._play_track_impl()
+            if success:
+                self._update_media_center()  # Update media center status when track is played
+            return success
+        except Exception:
+            return False
 
     def _update_media_center(self) -> None:
         """Updates macOS Media Center info"""
@@ -237,7 +230,7 @@ class Player(QObject):
             
             # Set duration and position
             info[MediaPlayer.MPMediaItemPropertyPlaybackDuration] = float(self.current_track.duration) / 1000.0
-            current_pos = pygame.mixer.music.get_pos()
+            current_pos = self._player.position()
             if current_pos > 0:  # Only set if we have a valid position
                 info[MediaPlayer.MPNowPlayingInfoPropertyElapsedPlaybackTime] = float(current_pos) / 1000.0
             
@@ -268,53 +261,91 @@ class Player(QObject):
     def _play_track_impl(self) -> bool:
         """Internal implementation of track playback"""
         try:
-            stream_url = self.current_track.getStreamURL()
+            # Stop playback before clearing the buffer
+            self._player.stop()  # Stop playback if it's currently playing
             
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
-                response = requests.get(stream_url, stream=True)
-                for chunk in response.iter_content(chunk_size=8192):
-                    if chunk:
-                        temp_file.write(chunk)
-                temp_file_path = temp_file.name
+            # Clear buffer before playing new track
+            self.buffer.close()  # Close buffer if it's open
+            self.buffer = QBuffer()  # Create a new buffer instance
+            self.buffer.open(QIODevice.OpenModeFlag.ReadWrite)  # Open buffer for writing
 
-            pygame.mixer.music.stop()
-            pygame.mixer.music.load(temp_file_path)
-            pygame.mixer.music.play()
+            if self.current_track.media[0].container == 'mp3':
+                print("Track is already in MP3 format, downloading without conversion.")
+                media_key = self.current_track.media[0].parts[0].key
+                token = self.current_track._server._token
+                base_url = self.current_track._server.url(media_key)
+                stream_url = f"{base_url}?download=1&X-Plex-Token={token}"
+            else:
+                print("Track is not in MP3 format, converting to MP3.")
+                stream_url = self.current_track.getStreamURL(audioFormat='mp3')
             
-            # Update Media Center with a small delay to ensure playback has started
-            from PyQt6.QtCore import QTimer
-            QTimer.singleShot(100, self._update_media_center)
+            # Debug: Print detailed track information
+            print(f"Track title: {self.current_track.title}")
+            print(f"Track URL: {stream_url}")
+            print(f"Track duration: {self.current_track.duration / 1000.0} seconds")  # Длительность в секундах
             
-            # Emit track changed signal
-            self.track_changed.emit()
+            # Загрузка трека в память с использованием потоковой загрузки
+            response = requests.get(stream_url, stream=True)
+            response.raise_for_status()
             
+            # Чтение данных и запись в буфер "на ходу"
+            for chunk in response.iter_content(chunk_size=1024):  # Чтение по 1 КБ
+                if chunk:  # Если есть данные
+                    self.buffer.write(chunk)
+            
+            if self.get_current_track_size() != self.buffer.size():
+                print(f"Track size mismatch. Buffer size: {self.buffer.size()}, Track size: {self.get_current_track_size()}")
+                print(f"Track URL: {stream_url}")
+            
+            self.buffer.seek(0)
+            self._player.setSourceDevice(self.buffer)
+            
+            # Debug: Print buffer state
+
+            
+            print("Starting playback...")
+            self._player.play()
             return True
         except Exception as e:
             print(f"Error playing track: {e}")
             return False
 
+    def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
+        """Handles media status changes"""
+        print(f"Media status changed: {status}")  # Debug: Print media status
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            # Auto-play next track if enabled
+            if self.auto_play:
+                print("Playing next track...")
+                if not self.play_next_track():
+                    print("No more tracks to play.")  # Debug: No more tracks
+                else:
+                    print("Next track started.")  # Debug: Next track started
+
     def toggle_play(self) -> None:
         """Toggles play/pause state"""
-        if pygame.mixer.music.get_busy():
-            pygame.mixer.music.pause()
+        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._player.pause()
+            self.playback_state_changed.emit(False)
         else:
-            pygame.mixer.music.unpause()
+            self._player.play()
+            self.playback_state_changed.emit(True)
         # Update Media Center with a small delay
         from PyQt6.QtCore import QTimer
         QTimer.singleShot(100, self._update_media_center)
 
     def seek_position(self, position: int) -> None:
         """Seeks to specified position"""
-        pygame.mixer.music.set_pos(position / 1000)
+        self._player.setPosition(position)
         self._update_media_center()
 
     def get_current_position(self) -> int:
         """Returns current playback position"""
-        return pygame.mixer.music.get_pos()
+        return self._player.position()
 
     def is_playing(self) -> bool:
         """Checks if playback is active"""
-        return pygame.mixer.music.get_busy()
+        return self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
 
     def add_to_playlist(self, track: Track) -> None:
         """Adds a track to the playlist"""
@@ -322,10 +353,11 @@ class Player(QObject):
 
     def clear_playlist(self) -> None:
         """Clears the playlist"""
+        self._player.stop()  # Stop playback before clearing the playlist
         self.playlist.clear()
         self.current_playlist_index = -1
         if self.current_track:
-            pygame.mixer.music.stop()
+            self._player.stop()
             self.current_track = None
             # Clear Media Center
             if sys.platform == 'darwin':
@@ -345,7 +377,7 @@ class Player(QObject):
 
         # If current track was removed, stop playback
         if self.current_playlist_index in indices:
-            pygame.mixer.music.stop()
+            self._player.stop()
             self.current_track = None
             self.current_playlist_index = -1
             # Clear Media Center
@@ -367,11 +399,13 @@ class Player(QObject):
         if self.current_playlist_index >= 0 and self.current_playlist_index < len(self.playlist) - 1:
             self.current_playlist_index += 1
             self.current_track = self.playlist[self.current_playlist_index]
+            self._player.stop()  # Stop playback before playing the next track
             return self._play_track_impl()
         elif self.current_album and self.tracks:
             current_index = self.tracks.index(self.current_track)
             if current_index < len(self.tracks) - 1:
                 self.current_track = self.tracks[current_index + 1]
+                self._player.stop()  # Stop playback before playing the next track
                 return self._play_track_impl()
         return False
 
@@ -390,11 +424,14 @@ class Player(QObject):
 
     def close(self) -> None:
         """Closes the player"""
-        pygame.mixer.quit()
+        self._player.stop()
 
     def _on_position_changed(self, position: int) -> None:
         """Handler for position change"""
-        self.position_changed.emit(position)
+        # Update position only if it has changed significantly
+        if abs(position - self._last_position) > 1000:  # Update if change is more than 1 second
+            self.position_changed.emit(position)
+            self._last_position = position
 
     def _on_duration_changed(self, duration: int) -> None:
         """Handler for duration change"""
@@ -402,8 +439,29 @@ class Player(QObject):
 
     def _on_playback_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
         """Handler for playback state change"""
+        print(f"Playback state changed: {state}")  # Debug: Print playback state change
+        if state == QMediaPlayer.PlaybackState.StoppedState:
+
+            current_pos = self.get_current_position()
+            track_duration = self.current_track.duration / 1000.0  # Duration in seconds
+            
+            # If current position is close to the track duration (e.g., 1 second)
+            if current_pos >= track_duration - 1:  # 1 second before the end
+                print("Track is nearing its end, playing next track...")
+                if self.auto_play:
+                    if not self.play_next_track():
+                        print("No more tracks to play.")  # Debug: No more tracks
+                    else:
+                        print("Next track started.")  # Debug: Next track started
         is_playing = state == QMediaPlayer.PlaybackState.PlayingState
+        print(f"Player state: {'Playing' if is_playing else 'Paused/Stopped'}")  # Состояние плеера
         self.playback_state_changed.emit(is_playing)
+
+    def _on_error_occurred(self, error: QMediaPlayer.Error, error_string: str) -> None:
+        """Handles media player errors"""
+        print(f"Media player error: {error}, {error_string}")  # Debug: Print error information
+        if error != QMediaPlayer.Error.NoError:
+            print("An error occurred during playback.")  # Debug: Error occurred
 
     def save_config(self) -> None:
         """Saves configuration to file"""
@@ -507,4 +565,47 @@ class Player(QObject):
             'current_playlist_index': self.current_playlist_index,
             'is_playing': self.is_playing(),
             'auto_play': self.auto_play
-        } 
+        }
+
+    def update_progress(self) -> None:
+        """Updates playback progress"""
+        if self.player.is_playing() and self.player.current_track:
+            current_pos = self.player.get_current_position()
+            print(f"Current position: {current_pos}")  # Debug: Print current position
+            print(f"Player state: {self._player.playbackState()}")  # Debug: Print player state
+            print(f"Buffer size: {self.buffer.size()} bytes")  # Debug: Print buffer size
+            self.progress_slider.setValue(current_pos)
+            self.update_time_label(current_pos, self.player.current_track.duration)
+            
+            # Check if track has ended
+            if current_pos >= self.player.current_track.duration:
+                print("Track ended, playing next track...")  # Debug: Track ended
+                self.play_next_track()
+        else:
+            if self.player.current_track and self.progress_slider.value() >= self.player.current_track.duration:
+                print("Track ended, playing next track...")  # Debug: Track ended
+                self.play_next_track() 
+
+    def get_current_track_size(self) -> Optional[int]:
+        """Возвращает размер текущего трека в байтах."""
+        if not self.current_track or not self.current_track.media or not self.current_track.media[0].parts:
+            return None
+        
+        try:
+            # Получаем URL потока
+            media_key = self.current_track.media[0].parts[0].key
+            token = self.current_track._server._token
+            base_url = self.current_track._server.url(media_key)
+            stream_url = f"{base_url}?download=1&X-Plex-Token={token}"
+            
+            # Выполняем HEAD-запрос для получения заголовков
+            response = requests.head(stream_url)
+            if response.status_code == 200:
+                # Получаем размер из заголовка Content-Length
+                return int(response.headers.get('Content-Length', 0))
+            else:
+                print(f"Ошибка при получении размера трека: {response.status_code}")
+                return None
+        except Exception as e:
+            print(f"Ошибка при получении размера трека: {e}")
+            return None 

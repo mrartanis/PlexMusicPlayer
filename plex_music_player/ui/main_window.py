@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap
+from PyQt6.QtWidgets import QSizePolicy
 
 from plex_music_player.models.player import Player
 from plex_music_player.ui.dialogs import ConnectionDialog, AddTrackDialog, AddTracksDialog
@@ -41,6 +42,7 @@ class MainWindow(QMainWindow):
             self.setup_ui(show_connect_only=True)
         
         self.setMinimumSize(300, 600)
+        self.setMaximumSize(450, 900)
 
     def setup_ui(self, show_connect_only: bool = True) -> None:
         self.setWindowTitle("Plex Music Player")
@@ -76,9 +78,12 @@ class MainWindow(QMainWindow):
         # Cover
         cover_container = QHBoxLayout()
         cover_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        cover_container.setContentsMargins(20, 0, 20, 0)
+        cover_container.setContentsMargins(0, 0, 0, 0)
+        cover_container.setSpacing(0)
         self.cover_label = QLabel()
-        self.cover_label.setFixedHeight(200)
+        self.cover_label.setFixedHeight(300)
+        self.cover_label.setMinimumHeight(300)
+        self.cover_label.setStyleSheet("border: none; background: transparent;")
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         cover_container.addWidget(self.cover_label)
         center_container.addLayout(cover_container)
@@ -102,28 +107,29 @@ class MainWindow(QMainWindow):
         playlist_layout = QVBoxLayout(playlist_widget)
         playlist_layout.setContentsMargins(0, 0, 0, 0)
         playlist_layout.setSpacing(5)
-        
         playlist_header = QHBoxLayout()
-        playlist_label = QLabel("Playlist")
-        playlist_header.addWidget(playlist_label)
         
-        self.add_button = QPushButton("➕")
-        self.add_button.setFixedSize(24, 24)
+        self.add_button = QPushButton("✙")
+        self.add_button.setFixedSize(30, 30)
+        self.add_button.setStyleSheet(self.get_button_style())
         self.add_button.clicked.connect(self.show_add_tracks_dialog)
         playlist_header.addWidget(self.add_button)
         
-        self.shuffle_button = QPushButton("🔀")
-        self.shuffle_button.setFixedSize(24, 24)
+        self.shuffle_button = QPushButton("⇄")
+        self.shuffle_button.setFixedSize(30, 30)
+        self.shuffle_button.setStyleSheet(self.get_button_style())
         self.shuffle_button.clicked.connect(self.shuffle_playlist)
         playlist_header.addWidget(self.shuffle_button)
         
-        self.remove_button = QPushButton("❌")
-        self.remove_button.setFixedSize(24, 24)
+        self.remove_button = QPushButton("✖")
+        self.remove_button.setFixedSize(30, 30)
+        self.remove_button.setStyleSheet(self.get_button_style())
         self.remove_button.clicked.connect(self.remove_from_playlist)
         playlist_header.addWidget(self.remove_button)
         
-        self.clear_button = QPushButton("🗑")
-        self.clear_button.setFixedSize(24, 24)
+        self.clear_button = QPushButton("☠︎︎")
+        self.clear_button.setFixedSize(30, 30)
+        self.clear_button.setStyleSheet(self.get_button_style())
         self.clear_button.clicked.connect(self.clear_playlist)
         playlist_header.addWidget(self.clear_button)
         
@@ -152,6 +158,7 @@ class MainWindow(QMainWindow):
         # Time
         self.time_label = QLabel("00:00 / 00:00")
         self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.time_label.setStyleSheet("font-family: 'Courier New', Courier, monospace; font-weight: bold;")
         controls_layout.addWidget(self.time_label)
 
         # Control buttons
@@ -178,6 +185,15 @@ class MainWindow(QMainWindow):
         buttons_layout.addWidget(self.next_button)
 
         controls_layout.addLayout(buttons_layout)
+
+        # Volume slider
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(100)  # Default volume level
+        self.volume_slider.valueChanged.connect(self.change_volume)
+        self.volume_slider.setFixedHeight(20)
+        controls_layout.addWidget(self.volume_slider)
+
         layout.addLayout(controls_layout)
 
         # Apply styles
@@ -312,6 +328,29 @@ class MainWindow(QMainWindow):
                 self.playlist_list.addItem(f"{track.title}{year} - {track.grandparentTitle} [{track.parentTitle}]")
             self.update_playlist_selection()
 
+        self.player.playback_state_changed.connect(self.update_play_button)
+
+        # Обновление стиля ползунка громкости
+        self.volume_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                background: #2d2d2d;
+                height: 4px;  /* Устанавливаем высоту дорожки */
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background: #0078d4;
+                border: none;
+                width: 10px;  /* Устанавливаем ширину ручки */
+                height: 10px; /* Устанавливаем высоту ручки */
+                margin: -5px 0; /* Центрируем ручку */
+                border-radius: 5px; /* Делаем ручку круглой */
+            }
+            QSlider::sub-page:horizontal {
+                background: #0078d4;
+                border-radius: 2px;
+            }
+        """)
+
     def show_connection_dialog(self) -> None:
         """Shows connection dialog"""
         dialog = ConnectionDialog(self)
@@ -342,10 +381,12 @@ class MainWindow(QMainWindow):
         """Loads and displays album cover"""
         if not self.player.current_track or not self.player.plex:
             return
+        
         pixmap = load_cover_image(self.player.plex, self.player.current_track)
         if pixmap:
-            window_width = self.width() - 40  # Учитываем отступы
-            scaled_pixmap = pixmap.scaled(window_width, 200, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            window_width = self.width()
+            window_height = self.height()
+            scaled_pixmap = pixmap.scaled(window_width, window_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             self.cover_label.setPixmap(scaled_pixmap)
         else:
             self.cover_label.clear()
@@ -368,6 +409,7 @@ class MainWindow(QMainWindow):
             
             # Check if track has ended
             if current_pos >= self.player.current_track.duration:
+                print("Track ended, playing next track...")  # Debug: Track ended
                 self.play_next_track()
         else:
             if self.player.current_track and self.progress_slider.value() >= self.player.current_track.duration:
@@ -442,6 +484,9 @@ class MainWindow(QMainWindow):
                 self.player.current_track = self.player.playlist[index]
                 if self.player._play_track_impl():
                     self.update_playback_ui()
+                    self.play_button.setEnabled(True)
+                    self.prev_button.setEnabled(True)
+                    self.next_button.setEnabled(True)
         except Exception as e:
             print(f"Error playing from playlist: {e}")
 
@@ -505,4 +550,31 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         self.player.save_playlist()
         self.player.close()
-        super().closeEvent(event) 
+        super().closeEvent(event)
+
+    def update_play_button(self, is_playing: bool) -> None:
+        """Updates the play/pause button based on playback state"""
+        self.play_button.setText("⏸" if is_playing else "▶")
+        self.play_button.setEnabled(True)
+
+    def change_volume(self, value: int) -> None:
+        """Changes the volume of the player"""
+        self.player._audio_output.setVolume(value / 100.0)  # Set volume as a float between 0.0 and 1.0 
+
+    def get_button_style(self) -> str:
+        return """
+            QPushButton {
+                background-color: #0078d4;  /* Цвет кнопок */
+                border: none;
+                border-radius: 15px;  /* Делаем кнопки круглыми */
+                color: white;
+                font-size: 14px;  /* Размер шрифта */
+            }
+            QPushButton:hover {
+                background-color: #1e8ae6;  /* Цвет при наведении */
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;  /* Цвет для отключенных кнопок */
+                color: #666666;
+            }
+        """ 

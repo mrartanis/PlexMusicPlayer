@@ -51,10 +51,10 @@ def load_cover_image(plex: PlexServer, track: Track, size: Tuple[int, int] = (20
         image = image.convertToFormat(QImage.Format.Format_RGB32)
         
         # Масштабируем изображение
-        scaled_image = image.scaled(size[0], size[1], Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+        #scaled_image = image.scaled(size[0], size[1], Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
         
         # Конвертируем в QPixmap
-        return QPixmap.fromImage(scaled_image)
+        return QPixmap.fromImage(image)
     except Exception as e:
         print(f"Ошибка при загрузке обложки: {e}")
         return None 
