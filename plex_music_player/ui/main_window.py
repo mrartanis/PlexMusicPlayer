@@ -42,7 +42,7 @@ class MainWindow(QMainWindow):
             print(f"Error during auto-connect: {e}")
             self.setup_ui(show_connect_only=True)
         
-        self.setMinimumSize(300, 600)
+        self.setMinimumSize(300, 700)
         self.setMaximumSize(450, 900)
 
     def setup_ui(self, show_connect_only: bool = True) -> None:
@@ -329,7 +329,13 @@ class MainWindow(QMainWindow):
                 self.playlist_list.addItem(f"{track.title}{year} - {track.grandparentTitle} [{track.parentTitle}]")
             self.update_playlist_selection()
 
-        self.player.playback_state_changed.connect(self.update_play_button)
+            # Activate control buttons
+            self.play_button.setEnabled(True)
+            self.prev_button.setEnabled(True)
+            self.next_button.setEnabled(True)
+
+            # Update playback button state
+            self.player.playback_state_changed.connect(self.update_play_button)
 
         # Обновление стиля ползунка громкости
         self.volume_slider.setStyleSheet("""
