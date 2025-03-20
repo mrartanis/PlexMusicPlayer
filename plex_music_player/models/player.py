@@ -181,12 +181,16 @@ class Player(QObject):
             return []
 
     def load_albums(self, artist_index: int) -> List[str]:
-        """Loads list of albums for the artist"""
+        """Loads list of albums for the artist, sorted by year"""
         if not self.plex or artist_index < 0 or artist_index >= len(self.artists):
             return []
         try:
             self.current_artist = self.artists[artist_index]
             self.albums = self.current_artist.albums()
+
+            # Сортировка альбомов по году
+            self.albums.sort(key=lambda album: album.year if hasattr(album, 'year') else 0)
+
             return [f"{album.title} ({album.year})" if hasattr(album, 'year') and album.year else album.title 
                    for album in self.albums]
         except Exception:
