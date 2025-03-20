@@ -3,7 +3,7 @@ from setuptools import setup
 APP = ['plex_music_player/__main__.py']
 DATA_FILES = []
 OPTIONS = {
-    'packages': ['PyQt6', 'pygame', 'plexapi', 'requests', 'plex_music_player', 'plex_music_player.ui', 'plex_music_player.models', 'plex_music_player.lib'],
+    'packages': ['PyQt6', 'plexapi', 'requests', 'plex_music_player', 'plex_music_player.ui', 'plex_music_player.models', 'plex_music_player.lib'],
     'includes': ['PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets'],
     'iconfile': 'MusicApp.icns',
     'plist': {
@@ -23,5 +23,5 @@ setup(
     app=APP,
     data_files=DATA_FILES,
     options={'py2app': OPTIONS},
-    install_requires=['PyQt6', 'pygame', 'plexapi', 'requests'],
+    install_requires=['PyQt6', 'plexapi', 'requests'],
 )
