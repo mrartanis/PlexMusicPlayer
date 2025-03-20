@@ -33,6 +33,7 @@ if sys.platform == 'darwin':
             toggle_command = command_center.togglePlayPauseCommand()
             next_command = command_center.nextTrackCommand()
             prev_command = command_center.previousTrackCommand()
+            change_playback_position_command = command_center.changePlaybackPositionCommand()
             
             # Add handlers
             play_command.addTargetWithHandler_(self.handlePlayCommand_)
@@ -40,6 +41,7 @@ if sys.platform == 'darwin':
             toggle_command.addTargetWithHandler_(self.handleTogglePlayPauseCommand_)
             next_command.addTargetWithHandler_(self.handleNextTrackCommand_)
             prev_command.addTargetWithHandler_(self.handlePreviousTrackCommand_)
+            change_playback_position_command.addTargetWithHandler_(self.handleSeekCommand_)
             
             return self
             
@@ -75,6 +77,12 @@ if sys.platform == 'darwin':
                 MediaPlayer.MPNowPlayingInfoCenter.defaultCenter().setNowPlayingInfo_(info_dict)
             except Exception as e:
                 print(f"Error updating Now Playing: {e}")
+
+        def handleSeekCommand_(self, event):
+            new_position = event.positionTime()
+            if self.player:
+                self.player.seek_position(int(new_position * 1000))  # Convert to milliseconds
+            return 1  # MPRemoteCommandHandlerStatusSuccess
 
 class Player(QObject):
     """Class for managing music playback"""
@@ -238,6 +246,9 @@ class Player(QObject):
         if abs(position - self._last_position) > 1000:  # Update if change is more than 1 second
             self.position_changed.emit(position)
             self._last_position = position
+            
+            # Update Media Center with the current position
+            self._update_media_center()  # Update Media Center info
 
     def _on_duration_changed(self, duration: int) -> None:
         """Handler for duration change"""
