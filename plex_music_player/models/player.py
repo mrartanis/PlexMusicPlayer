@@ -1,9 +1,8 @@
 import os
 import json
-from typing import Optional, List, Tuple
+from typing import Optional, List
 from plexapi.server import PlexServer
 from plexapi.audio import Track, Album, Artist
-from plexapi.exceptions import NotFound
 from PyQt6.QtCore import QObject, pyqtSignal, QTimer, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from plex_music_player.lib.utils import load_cover_image
