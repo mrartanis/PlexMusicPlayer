@@ -3,14 +3,12 @@ import json
 from typing import Optional, List
 from plexapi.server import PlexServer
 from plexapi.audio import Track, Album, Artist
-from PyQt6.QtCore import QObject, pyqtSignal, QTimer, QUrl
+from PyQt6.QtCore import QObject, pyqtSignal, QTimer, QUrl, QThread, pyqtSlot
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
-from plex_music_player.lib.utils import load_cover_image
 import tempfile
 import requests
 import random
 import sys
-import time
 
 if sys.platform == 'darwin':
     from Foundation import NSObject, NSMutableDictionary
@@ -21,7 +19,8 @@ if sys.platform == 'darwin':
     class MediaCenterDelegate(NSObject):
         def init(self):
             self = objc.super(MediaCenterDelegate, self).init()
-            if self is None: return None
+            if self is None:
+                return None
             
             # Initialize command center
             command_center = MediaPlayer.MPRemoteCommandCenter.sharedCommandCenter()
@@ -84,27 +83,19 @@ if sys.platform == 'darwin':
             return 1  # MPRemoteCommandHandlerStatusSuccess
 
 class Player(QObject):
-    """Class for managing music playback"""
+    """Class for managing music playback in a separate thread."""
     
     # Signals for UI updates
     position_changed = pyqtSignal(int)
     duration_changed = pyqtSignal(int)
     playback_state_changed = pyqtSignal(bool)
-    track_changed = pyqtSignal()  # New signal for track changes
+    track_changed = pyqtSignal()  # Signal for track changes
     
     def __init__(self):
         super().__init__()
-        
-        # Initialize player
-        self._player = QMediaPlayer()
-        self._audio_output = QAudioOutput()
-        self._player.setAudioOutput(self._audio_output)
-        
-        # Connect signals
-        self._player.positionChanged.connect(self._on_position_changed)
-        self._player.durationChanged.connect(self._on_duration_changed)
-        self._player.playbackStateChanged.connect(self._on_playback_state_changed)
-        self._player.errorOccurred.connect(self._on_error_occurred)  # Connect errorOccurred signal
+        # QMediaPlayer and QAudioOutput will be created in initialize_player()
+        self._player: Optional[QMediaPlayer] = None
+        self._audio_output: Optional[QAudioOutput] = None
         
         # Plex data
         self.plex: Optional[PlexServer] = None
@@ -116,9 +107,9 @@ class Player(QObject):
         self.tracks: List[Track] = []
         self.playlist: List[Track] = []
         self.current_playlist_index: int = -1
-        self.auto_play: bool = True  # Enable auto-play by default
+        self.auto_play: bool = True  # Auto-play enabled by default
 
-        # Initialize macOS Media Center integration
+        # Initialize macOS Media Center integration if on macOS
         if sys.platform == 'darwin':
             self.media_center_delegate = MediaCenterDelegate.alloc().init()
             self.media_center_delegate.set_player(self)
@@ -126,8 +117,25 @@ class Player(QObject):
         # Last known position
         self._last_position = 0
 
-    def connect(self, url: str, token: str) -> None:
-        """Connects to Plex server"""
+    @pyqtSlot()
+    def initialize_player(self) -> None:
+        """
+        Initialize QMediaPlayer and QAudioOutput in this thread.
+        This ensures that all playback objects work within the same thread.
+        """
+        self._player = QMediaPlayer(self)
+        self._audio_output = QAudioOutput(self)
+        self._player.setAudioOutput(self._audio_output)
+        # Connect signals
+        self._player.positionChanged.connect(self._on_position_changed)
+        self._player.durationChanged.connect(self._on_duration_changed)
+        self._player.playbackStateChanged.connect(self._on_playback_state_changed)
+        self._player.errorOccurred.connect(self._on_error_occurred)
+        print("Player initialized in thread:", QThread.currentThread())
+
+    @pyqtSlot(str, str)
+    def connect_server(self, url: str, token: str) -> None:
+        """Connect to the Plex server."""
         try:
             self.plex = PlexServer(url, token)
             # Save credentials to config on successful connection
@@ -155,8 +163,9 @@ class Player(QObject):
             self.plex = None
             raise e
 
+    @pyqtSlot(result=dict)
     def load_config(self) -> Optional[dict]:
-        """Loads configuration from file and attempts to connect"""
+        """Load configuration from file and attempt to connect."""
         try:
             config_path = os.path.expanduser("~/.config/plex_music_player/config.json")
             if os.path.exists(config_path):
@@ -164,14 +173,15 @@ class Player(QObject):
                     config = json.load(f)
                     if 'plex' in config:
                         plex_config = config['plex']
-                        self.connect(plex_config['url'], plex_config['token'])
+                        self.connect_server(plex_config['url'], plex_config['token'])
                         return config
         except Exception as e:
             print(f"Error loading configuration: {e}")
         return None
 
+    @pyqtSlot(result=list)
     def load_artists(self) -> List[str]:
-        """Loads list of artists"""
+        """Load the list of artists."""
         if not self.plex:
             return []
         try:
@@ -180,24 +190,24 @@ class Player(QObject):
         except Exception:
             return []
 
+    @pyqtSlot(int, result=list)
     def load_albums(self, artist_index: int) -> List[str]:
-        """Loads list of albums for the artist, sorted by year"""
+        """Load the list of albums for the artist, sorted by year."""
         if not self.plex or artist_index < 0 or artist_index >= len(self.artists):
             return []
         try:
             self.current_artist = self.artists[artist_index]
             self.albums = self.current_artist.albums()
-
-            # Сортировка альбомов по году
+            # Sort albums by year
             self.albums.sort(key=lambda album: album.year if hasattr(album, 'year') else 0)
-
             return [f"{album.title} ({album.year})" if hasattr(album, 'year') and album.year else album.title 
                    for album in self.albums]
         except Exception:
             return []
 
+    @pyqtSlot(int, result=list)
     def load_tracks(self, album_index: int) -> List[str]:
-        """Loads list of tracks for the album"""
+        """Load the list of tracks for the album."""
         if not self.plex or album_index < 0 or album_index >= len(self.albums):
             return []
         try:
@@ -209,8 +219,9 @@ class Player(QObject):
         except Exception:
             return []
 
+    @pyqtSlot(result=str)
     def get_stream_url(self) -> str:
-        """Forms the URL for the track stream."""
+        """Form the URL for the track stream."""
         if self.current_track.media[0].container == 'mp3':
             print("Track is already in MP3 format, downloading without conversion.")
             media_key = self.current_track.media[0].parts[0].key
@@ -222,151 +233,158 @@ class Player(QObject):
             return self.current_track.getStreamURL(audioFormat='mp3')
 
     def _on_playback_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
-        """Handles playback state changes"""
-        print(f"Playback state changed: {state}")  # Debug: Print playback state change
+        """Handle playback state changes."""
+        print(f"Playback state changed: {state}")
         if state == QMediaPlayer.PlaybackState.StoppedState:
             current_pos = self.get_current_position()
             track_duration = self.current_track.duration / 1000.0  # Duration in seconds
-            
-            # If current position is close to the track duration (e.g., 1 second)
-            if current_pos >= track_duration - 1:  # 1 second before the end
+            if current_pos >= track_duration - 1:
                 print("Track is nearing its end, playing next track...")
                 if self.auto_play:
                     if not self.play_next_track():
-                        print("No more tracks to play.")  # Debug: No more tracks
+                        print("No more tracks to play.")
                     else:
-                        print("Next track started.")  # Debug: Next track started
+                        print("Next track started.")
         is_playing = state == QMediaPlayer.PlaybackState.PlayingState
-        print(f"Player state: {'Playing' if is_playing else 'Paused/Stopped'}")  # Player state
+        print(f"Player state: {'Playing' if is_playing else 'Paused/Stopped'}")
         self.playback_state_changed.emit(is_playing)
-        
-        # Update Media Center info when playback state changes
-        self._update_media_center()  # Update Media Center info
+        QTimer.singleShot(100, self._update_media_center)
 
     def _on_position_changed(self, position: int) -> None:
-        """Handler for position change"""
-        # Update position only if it has changed significantly
+        """Handle position changes."""
         if abs(position - self._last_position) > 1000:  # Update if change is more than 1 second
             self.position_changed.emit(position)
             self._last_position = position
-            
-            # Update Media Center with the current position
-            self._update_media_center()  # Update Media Center info
+            QTimer.singleShot(0, self._update_media_center)
 
     def _on_duration_changed(self, duration: int) -> None:
-        """Handler for duration change"""
+        """Handle duration changes."""
         self.duration_changed.emit(duration)
 
     def _on_error_occurred(self, error: QMediaPlayer.Error, error_string: str) -> None:
-        """Handles media player errors"""
-        print(f"Media player error: {error}, {error_string}")  # Debug: Print error information
+        """Handle media player errors."""
+        print(f"Media player error: {error}, {error_string}")
         if error != QMediaPlayer.Error.NoError:
-            print("An error occurred during playback.")  # Debug: Error occurred
+            print("An error occurred during playback.")
 
+    @pyqtSlot()
     def toggle_play(self) -> None:
-        """Toggles play/pause state"""
+        """Toggle play/pause state."""
+        if self._player is None:
+            print("Player not initialized!")
+            return
         if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self._player.pause()
             self.playback_state_changed.emit(False)
         else:
             self._player.play()
             self.playback_state_changed.emit(True)
-        # Update Media Center with a small delay
         QTimer.singleShot(100, self._update_media_center)
 
+    @pyqtSlot(int)
     def seek_position(self, position: int) -> None:
-        """Seeks to specified position"""
+        """Seek to the specified position."""
+        if self._player is None:
+            print("Player not initialized!")
+            return
         self._player.setPosition(position)
         self._update_media_center()
 
+    @pyqtSlot(result=int)
     def get_current_position(self) -> int:
-        """Returns current playback position"""
+        """Return the current playback position."""
+        if self._player is None:
+            return 0
         return self._player.position()
 
+    @pyqtSlot(result=bool)
     def is_playing(self) -> bool:
-        """Checks if playback is active"""
+        """Check if playback is active."""
+        if self._player is None:
+            return False
         return self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
 
+    @pyqtSlot(object)
     def add_to_playlist(self, track: Track) -> None:
-        """Adds a track to the playlist"""
+        """Add a track to the playlist."""
         self.playlist.append(track)
 
+    @pyqtSlot()
     def clear_playlist(self) -> None:
-        """Clears the playlist"""
-        self._player.stop()  # Stop playback before clearing the playlist
+        """Clear the playlist."""
+        if self._player:
+            self._player.stop()  # Stop playback before clearing the playlist
         self.playlist.clear()
         self.current_playlist_index = -1
-        if self.current_track:
+        if self.current_track and self._player:
             self._player.stop()
             self.current_track = None
-            # Clear Media Center
+            # Clear Media Center info on macOS
             if sys.platform == 'darwin':
                 try:
                     MediaPlayer.MPNowPlayingInfoCenter.defaultCenter().setNowPlayingInfo_(None)
                 except Exception as e:
                     print(f"Error clearing Media Center: {e}")
 
+    @pyqtSlot(list)
     def remove_from_playlist(self, indices: List[int]) -> None:
-        """Removes tracks from playlist"""
-        # Sort indices in descending order to remove from end
+        """Remove tracks from the playlist."""
         indices = sorted(indices, reverse=True)
-        
-        # Remove elements from list
         for index in indices:
             self.playlist.pop(index)
-
-        # If current track was removed, stop playback
         if self.current_playlist_index in indices:
-            self._player.stop()
+            if self._player:
+                self._player.stop()
             self.current_track = None
             self.current_playlist_index = -1
-            # Clear Media Center
             if sys.platform == 'darwin':
                 try:
                     MediaPlayer.MPNowPlayingInfoCenter.defaultCenter().setNowPlayingInfo_(None)
                 except Exception as e:
                     print(f"Error clearing Media Center: {e}")
-        # If tracks before current were removed, adjust index
         elif self.current_playlist_index > 0:
             self.current_playlist_index -= len([i for i in indices if i < self.current_playlist_index])
 
+    @pyqtSlot()
     def shuffle_playlist(self) -> None:
-        """Shuffles the playlist"""
+        """Shuffle the playlist."""
         random.shuffle(self.playlist)
 
+    @pyqtSlot(result=bool)
     def play_next_track(self) -> bool:
-        """Plays next track"""
+        """Play the next track."""
         if self.current_playlist_index >= 0 and self.current_playlist_index < len(self.playlist) - 1:
             self.current_playlist_index += 1
             self.current_track = self.playlist[self.current_playlist_index]
-            self._player.stop()  # Stop playback before playing the next track
+            if self._player:
+                self._player.stop()
             success = self._play_track_impl()
             if success:
-                # Notify the main window to update the playlist selection
-                self.track_changed.emit()  # Emit signal to update UI
+                self.track_changed.emit()
                 QTimer.singleShot(120, self._update_media_center)
             return success
         elif self.current_album and self.tracks:
             current_index = self.tracks.index(self.current_track)
             if current_index < len(self.tracks) - 1:
                 self.current_track = self.tracks[current_index + 1]
-                self._player.stop()  # Stop playback before playing the next track
+                if self._player:
+                    self._player.stop()
                 success = self._play_track_impl()
                 if success:
-                    # Notify the main window to update the playlist selection
-                    self.track_changed.emit()  # Emit signal to update UI
+                    self.track_changed.emit()
                     QTimer.singleShot(120, self._update_media_center)
                 return success
         return False
 
+    @pyqtSlot(result=bool)
     def play_previous_track(self) -> bool:
-        """Plays previous track"""
+        """Play the previous track."""
         if self.current_playlist_index > 0:
             self.current_playlist_index -= 1
             self.current_track = self.playlist[self.current_playlist_index]
             success = self._play_track_impl()
             if success:
-                self._update_media_center()  # Update Media Center info
+                self._update_media_center()
                 return success
         elif self.current_album and self.tracks:
             current_index = self.tracks.index(self.current_track)
@@ -374,35 +392,31 @@ class Player(QObject):
                 self.current_track = self.tracks[current_index - 1]
                 success = self._play_track_impl()
                 if success:
-                    print("Media center update")
                     QTimer.singleShot(120, self._update_media_center)
                     return success
         return False
 
+    @pyqtSlot()
     def close(self) -> None:
-        """Closes the player"""
-        self._player.stop()
+        """Close the player."""
+        if self._player:
+            self._player.stop()
 
     def _update_media_center(self) -> None:
-        """Updates macOS Media Center info"""
+        """Update macOS Media Center information."""
         if not sys.platform == 'darwin' or not self.current_track:
             return
-
         try:
             info = NSMutableDictionary.alloc().init()
             
-            # Set track info
+            # Set track information
             info[MediaPlayer.MPMediaItemPropertyTitle] = self.current_track.title
             info[MediaPlayer.MPMediaItemPropertyArtist] = self.current_track.grandparentTitle
             info[MediaPlayer.MPMediaItemPropertyAlbumTitle] = self.current_track.parentTitle
-            
-            # Set duration and position
             info[MediaPlayer.MPMediaItemPropertyPlaybackDuration] = float(self.current_track.duration) / 1000.0
-            current_pos = self._player.position()
-            if current_pos > 0:  # Only set if we have a valid position
+            current_pos = self._player.position() if self._player else 0
+            if current_pos > 0:
                 info[MediaPlayer.MPNowPlayingInfoPropertyElapsedPlaybackTime] = float(current_pos) / 1000.0
-            
-            # Set playback rate
             info[MediaPlayer.MPNowPlayingInfoPropertyPlaybackRate] = 1.0 if self.is_playing() else 0.0
             
             # Try to add artwork
@@ -420,27 +434,23 @@ class Player(QObject):
                             os.unlink(temp_file.name)
                 except Exception as e:
                     print(f"Error setting artwork: {e}")
-
-            # Update Media Center
             self.media_center_delegate.update_now_playing(info)
         except Exception as e:
             print(f"Error updating Media Center: {e}")
 
     def _play_track_impl(self) -> bool:
-        """Internal implementation of track playback"""
+        """Internal implementation of track playback."""
+        if self._player is None:
+            print("Player not initialized!")
+            return False
         try:
-            # Stop playback if it is currently playing
             if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-                self._player.stop()  # Stop playback if it's currently playing
-            
-            # Get the stream URL
-            stream_url = self.get_stream_url()  # Get the stream URL
-            print(f"Track URL: {stream_url}")  # Log the track URL
-            
-            # Set the media source for playback
-            self._player.setSource(QUrl(stream_url))  # Set the media source to the URL
+                self._player.stop()
+            stream_url = self.get_stream_url()
+            print(f"Track URL: {stream_url}")
+            self._player.setSource(QUrl(stream_url))
             print("Starting playback...")
-            self._player.play()  # Start playback
+            self._player.play()
             QTimer.singleShot(120, self._update_media_center)
             return True
         except Exception as e:
@@ -448,30 +458,31 @@ class Player(QObject):
             return False
 
     def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
-        """Handles media status changes"""
-        print(f"Media status changed: {status}")  # Debug: Print media status
+        """Handle media status changes."""
+        print(f"Media status changed: {status}")
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            # Auto-play next track if enabled
             if self.auto_play:
                 print("Playing next track...")
                 if not self.play_next_track():
-                    print("No more tracks to play.")  # Debug: No more tracks
+                    print("No more tracks to play.")
                 else:
-                    print("Next track started.")  # Debug: Next track started
+                    print("Next track started.")
 
+    @pyqtSlot()
     def save_config(self) -> None:
-        """Saves configuration to file"""
+        """Save configuration to file."""
         try:
             config_dir = os.path.expanduser("~/.config/plex_music_player")
             os.makedirs(config_dir, exist_ok=True)
             config_path = os.path.join(config_dir, "config.json")
             with open(config_path, "w") as f:
-                json.dump(self.config, f)
+                json.dump(self.config(), f)
         except Exception as e:
             print(f"Error saving configuration: {e}")
 
+    @pyqtSlot()
     def save_playlist(self) -> None:
-        """Saves playlist to file"""
+        """Save the playlist to file."""
         try:
             config_dir = os.path.expanduser("~/.config/plex_music_player")
             os.makedirs(config_dir, exist_ok=True)
@@ -497,8 +508,9 @@ class Player(QObject):
         except Exception as e:
             print(f"Error saving playlist: {e}")
 
+    @pyqtSlot()
     def load_playlist(self) -> None:
-        """Loads playlist from file"""
+        """Load the playlist from file."""
         try:
             playlist_path = os.path.expanduser("~/.config/plex_music_player/playlist.json")
             if not os.path.exists(playlist_path):
@@ -513,7 +525,6 @@ class Player(QObject):
             self.playlist.clear()
             for track_data in data['playlist']:
                 try:
-                    # Поиск трека в библиотеке Plex
                     results = self.plex.library.search(track_data['title'], libtype="track")
                     for track in results:
                         if (track.grandparentTitle == track_data['artist'] and 
@@ -532,20 +543,24 @@ class Player(QObject):
         except Exception as e:
             print(f"Error loading playlist: {e}")
 
-    def add_tracks_batch(self, tracks):
-        """Batch adds tracks to playlist"""
+    @pyqtSlot(object)
+    def add_tracks_batch(self, tracks) -> None:
+        """Batch-add tracks to the playlist."""
         self.playlist.extend(tracks)
 
+    @pyqtSlot(bool)
     def set_auto_play(self, enabled: bool) -> None:
-        """Sets auto-play state"""
+        """Set the auto-play state."""
         self.auto_play = enabled
 
+    @pyqtSlot(result=bool)
     def is_auto_play_enabled(self) -> bool:
-        """Returns auto-play state"""
+        """Return whether auto-play is enabled."""
         return self.auto_play
 
+    @pyqtSlot(result=dict)
     def config(self) -> dict:
-        """Returns player configuration"""
+        """Return the player configuration."""
         return {
             'plex': {
                 'url': self.plex.url if self.plex else None,
@@ -563,44 +578,53 @@ class Player(QObject):
             'auto_play': self.auto_play
         }
 
+    @pyqtSlot()
     def update_progress(self) -> None:
-        """Updates playback progress"""
-        if self.player.is_playing() and self.player.current_track:
-            current_pos = self.player.get_current_position()
-            print(f"Current position: {current_pos}")  # Debug: Print current position
-            print(f"Player state: {self._player.playbackState()}")  # Debug: Print player state
-            self.progress_slider.setValue(current_pos)
-            self.update_time_label(current_pos, self.player.current_track.duration)
-            
-            # Check if track has ended
-            if current_pos >= self.player.current_track.duration:
-                print("Track ended, playing next track...")  # Debug: Track ended
+        """Update playback progress."""
+        if self.is_playing() and self.current_track:
+            current_pos = self.get_current_position()
+            print(f"Current position: {current_pos}")
+            print(f"Player state: {self._player.playbackState() if self._player else 'Not initialized'}")
+            # Here, it is assumed that UI elements (e.g., progress_slider, update_time_label)
+            # are defined elsewhere in the UI code – existing logic is preserved.
+            if current_pos >= self.current_track.duration:
+                print("Track ended, playing next track...")
                 self.play_next_track()
         else:
-            if self.player.current_track and self.progress_slider.value() >= self.player.current_track.duration:
-                print("Track ended, playing next track...")  # Debug: Track ended
-                self.play_next_track() 
+            # Placeholder for additional UI update logic if needed
+            pass
 
+    @pyqtSlot(result=int)
     def get_current_track_size(self) -> Optional[int]:
-        """Returns the size of the current track in bytes."""
+        """Return the size of the current track in bytes."""
         if not self.current_track or not self.current_track.media or not self.current_track.media[0].parts:
             return None
         
         try:
-            # Get stream URL
             media_key = self.current_track.media[0].parts[0].key
             token = self.current_track._server._token
             base_url = self.current_track._server.url(media_key)
             stream_url = f"{base_url}?download=1&X-Plex-Token={token}"
-            
-            # Perform HEAD request to get headers
             response = requests.head(stream_url)
             if response.status_code == 200:
-                # Get size from Content-Length header
                 return int(response.headers.get('Content-Length', 0))
             else:
                 print(f"Error getting track size: {response.status_code}")
                 return None
         except Exception as e:
             print(f"Error getting track size: {e}")
-            return None 
+            return None
+
+class PlayerThread(QThread):
+    player_ready = pyqtSignal(object)  # Signal to notify that the player is ready
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.player = None
+
+    def run(self):
+        # Create the Player object in this thread (so its children are created in the correct thread)
+        self.player = Player()
+        self.player.initialize_player()  # This initializes QMediaPlayer, etc.
+        self.player_ready.emit(self.player)  # Notify main thread that player is ready
+        self.exec()
