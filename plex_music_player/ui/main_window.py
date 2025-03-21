@@ -55,6 +55,8 @@ class MainWindow(QMainWindow):
             self.connect_button.show()
 
     def setup_ui(self, show_connect_only: bool = True) -> None:
+        """Updated setup_ui method to keep the track info label truly centered,
+        especially in narrow windows."""
         self.setWindowTitle("Plex Music Player")
         
         # Set margins and spacing for the main layout
@@ -79,7 +81,6 @@ class MainWindow(QMainWindow):
             self.connect_button = QPushButton("Connect to Plex")
             self.connect_button.setFixedWidth(150)
             self.connect_button.clicked.connect(self.show_connection_dialog)
-            # Initially hide the connect button; it will be shown if connection fails.
             self.connect_button.hide()
             connect_container.addWidget(self.connect_button)
             
@@ -99,7 +100,6 @@ class MainWindow(QMainWindow):
         cover_container.setSpacing(0)
         self.cover_label = QLabel()
         self.cover_label.setFixedHeight(300)
-        self.cover_label.setMinimumHeight(300)
         self.cover_label.setStyleSheet("border: none; background: transparent;")
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         cover_container.addWidget(self.cover_label)
@@ -108,12 +108,13 @@ class MainWindow(QMainWindow):
         # Track info container
         track_info_container = QHBoxLayout()
         track_info_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        track_info_container.setContentsMargins(20, 0, 20, 0)
+        # Changed margins to (0,0,0,0) and removed min/max width lines for track_info
+        track_info_container.setContentsMargins(0, 0, 0, 0)
+
         self.track_info = QLabel("No track")
         self.track_info.setWordWrap(True)
         self.track_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.track_info.setMinimumWidth(260)
-        self.track_info.setMaximumWidth(400)
+        # Removed self.track_info.setMinimumWidth(...) / setMaximumWidth(...)
         track_info_container.addWidget(self.track_info)
         center_container.addLayout(track_info_container)
 
@@ -189,7 +190,6 @@ class MainWindow(QMainWindow):
         self.prev_button.clicked.connect(self.play_previous_track)
         buttons_layout.addWidget(self.prev_button)
 
-        # At startup, if no track is playing, show the play icon
         self.play_button = QPushButton("▶")
         self.play_button.setEnabled(False)
         self.play_button.setFixedSize(40, 40)
@@ -346,30 +346,9 @@ class MainWindow(QMainWindow):
             self.prev_button.setEnabled(True)
             self.next_button.setEnabled(True)
             self.player.playback_state_changed.connect(self.update_play_button)
-            # Ensure play button shows "play" icon if not playing
             if not self.player.is_playing():
                 self.play_button.setText("▶")
 
-        # Update volume slider style
-        self.volume_slider.setStyleSheet("""
-            QSlider::groove:horizontal {
-                background: #2d2d2d;
-                height: 4px;
-                border-radius: 2px;
-            }
-            QSlider::handle:horizontal {
-                background: #0078d4;
-                border: none;
-                width: 10px;
-                height: 10px;
-                margin: -5px 0;
-                border-radius: 5px;
-            }
-            QSlider::sub-page:horizontal {
-                background: #0078d4;
-                border-radius: 2px;
-            }
-        """)
 
     def show_connection_dialog(self) -> None:
         """Show connection dialog."""
