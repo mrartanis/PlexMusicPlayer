@@ -233,18 +233,22 @@ class Player(QObject):
             return self.current_track.getStreamURL(audioFormat='mp3')
 
     def _on_playback_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
-        """Handle playback state changes."""
+        """Handle playback state changes safely."""
         print(f"Playback state changed: {state}")
         if state == QMediaPlayer.PlaybackState.StoppedState:
             current_pos = self.get_current_position()
-            track_duration = self.current_track.duration / 1000.0  # Duration in seconds
-            if current_pos >= track_duration - 1:
-                print("Track is nearing its end, playing next track...")
-                if self.auto_play:
-                    if not self.play_next_track():
-                        print("No more tracks to play.")
-                    else:
-                        print("Next track started.")
+            # Check if current_track exists before accessing its duration
+            if self.current_track:
+                track_duration = self.current_track.duration / 1000.0  # Duration in seconds
+                if current_pos >= track_duration - 1:
+                    print("Track is nearing its end, playing next track...")
+                    if self.auto_play:
+                        if not self.play_next_track():
+                            print("No more tracks to play.")
+                        else:
+                            print("Next track started.")
+            else:
+                print("No current track available.")
         is_playing = state == QMediaPlayer.PlaybackState.PlayingState
         print(f"Player state: {'Playing' if is_playing else 'Paused/Stopped'}")
         self.playback_state_changed.emit(is_playing)

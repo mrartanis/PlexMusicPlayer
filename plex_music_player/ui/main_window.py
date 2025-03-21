@@ -452,7 +452,13 @@ class MainWindow(QMainWindow):
             print(f"Error updating selection: {e}")
 
     def clear_playlist(self) -> None:
-        """Clear the playlist."""
+        """Clear the playlist and safely pause playback if necessary."""
+        # Pause playback if a track is currently playing, since no stop() method exists
+        if self.player.is_playing():
+            self.player.toggle_play()  # Pause playback
+        # Clear current track to avoid NoneType attribute errors
+        self.player.current_track = None
+
         self.player.clear_playlist()
         self.playlist_list.clear()
         self.play_button.setText("▶")
@@ -472,6 +478,17 @@ class MainWindow(QMainWindow):
         if not selected_items:
             return
         indices = [self.playlist_list.row(item) for item in selected_items]
+
+        # If the currently playing track is being removed, stop playback safely
+        if self.player.current_track and self.player.current_playlist_index in indices:
+            self.player.stop()  # Stop playback safely
+            self.player.current_track = None
+            self.play_button.setText("▶")
+            self.progress_slider.setValue(0)
+            self.time_label.setText("00:00 / 00:00")
+            self.track_info.setText("No track")
+            self.cover_label.clear()
+
         self.player.remove_from_playlist(indices)
         for index in sorted(indices, reverse=True):
             self.playlist_list.takeItem(index)
