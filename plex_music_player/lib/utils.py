@@ -1,9 +1,12 @@
 import sys
 import os
+import requests
+import tempfile
 from typing import Optional, Tuple
 from plexapi.server import PlexServer
 from plexapi.audio import Track
 from PyQt6.QtGui import QImage, QPixmap
+
 
 def format_time(ms: int) -> str:
     total_seconds = ms // 1000
@@ -11,11 +14,13 @@ def format_time(ms: int) -> str:
     seconds = total_seconds % 60
     return f"{minutes:02d}:{seconds:02d}"
 
+
 def format_track_info(track: Track) -> str:
     if not track:
         return "No track"
     year = f" ({track.year})" if hasattr(track, 'year') and track.year else ""
     return f"{track.title}{year}\n{track.grandparentTitle}\n{track.parentTitle}"
+
 
 def load_cover_image(plex: PlexServer, track: Track, size: Tuple[int, int] = (200, 200)) -> Optional[QPixmap]:
     if not track or not plex:
@@ -39,6 +44,22 @@ def load_cover_image(plex: PlexServer, track: Track, size: Tuple[int, int] = (20
     except Exception as e:
         print(f"Error loading cover: {e}")
         return None
+
+
+def download_artwork(track: Track) -> bytes | str | os.PathLike:
+    """Download artwork for the track and return the local file path."""
+    if hasattr(track, 'thumb') and track._server:
+        try:
+            thumb_url = track._server.url(track.thumb)
+            response = requests.get(thumb_url, headers={'X-Plex-Token': track._server._token})
+            if response.status_code == 200:
+                temp_file = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
+                temp_file.write(response.content)
+                temp_file.close()
+                return temp_file.name
+        except Exception as e:
+            print(f"Error downloading artwork: {e}")
+    return None
 
 
 def pyintaller_resource_path(relative_path) -> str | bytes:
