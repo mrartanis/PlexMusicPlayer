@@ -9,6 +9,7 @@ import tempfile
 import requests
 import random
 import sys
+from plex_music_player.lib.media_center import get_media_center
 
 if sys.platform == 'darwin':
     from Foundation import NSObject, NSMutableDictionary
@@ -109,10 +110,11 @@ class Player(QObject):
         self.current_playlist_index: int = -1
         self.auto_play: bool = True  # Auto-play enabled by default
 
-        # Initialize macOS Media Center integration if on macOS
-        if sys.platform == 'darwin':
-            self.media_center_delegate = MediaCenterDelegate.alloc().init()
-            self.media_center_delegate.set_player(self)
+        # Initialize media center integration
+        self.media_center = get_media_center()
+        if self.media_center:
+            self.media_center.initialize()
+            self.media_center.set_player(self)
 
         # Last known position
         self._last_position = 0
@@ -323,12 +325,12 @@ class Player(QObject):
         if self.current_track and self._player:
             self._player.stop()
             self.current_track = None
-            # Clear Media Center info on macOS
-            if sys.platform == 'darwin':
+            # Clear media center info
+            if self.media_center:
                 try:
-                    MediaPlayer.MPNowPlayingInfoCenter.defaultCenter().setNowPlayingInfo_(None)
+                    self.media_center.clear_now_playing()
                 except Exception as e:
-                    print(f"Error clearing Media Center: {e}")
+                    print(f"Error clearing media center: {e}")
 
     @pyqtSlot(list)
     def remove_from_playlist(self, indices: List[int]) -> None:
@@ -341,11 +343,11 @@ class Player(QObject):
                 self._player.stop()
             self.current_track = None
             self.current_playlist_index = -1
-            if sys.platform == 'darwin':
+            if self.media_center:
                 try:
-                    MediaPlayer.MPNowPlayingInfoCenter.defaultCenter().setNowPlayingInfo_(None)
+                    self.media_center.clear_now_playing()
                 except Exception as e:
-                    print(f"Error clearing Media Center: {e}")
+                    print(f"Error clearing media center: {e}")
         elif self.current_playlist_index > 0:
             self.current_playlist_index -= len([i for i in indices if i < self.current_playlist_index])
 
@@ -407,40 +409,19 @@ class Player(QObject):
             self._player.stop()
 
     def _update_media_center(self) -> None:
-        """Update macOS Media Center information."""
-        if not sys.platform == 'darwin' or not self.current_track:
+        """Update media center information."""
+        if not self.current_track or not self.media_center:
             return
         try:
-            info = NSMutableDictionary.alloc().init()
-            
-            # Set track information
-            info[MediaPlayer.MPMediaItemPropertyTitle] = self.current_track.title
-            info[MediaPlayer.MPMediaItemPropertyArtist] = self.current_track.grandparentTitle
-            info[MediaPlayer.MPMediaItemPropertyAlbumTitle] = self.current_track.parentTitle
-            info[MediaPlayer.MPMediaItemPropertyPlaybackDuration] = float(self.current_track.duration) / 1000.0
             current_pos = self._player.position() if self._player else 0
-            if current_pos > 0:
-                info[MediaPlayer.MPNowPlayingInfoPropertyElapsedPlaybackTime] = float(current_pos) / 1000.0
-            info[MediaPlayer.MPNowPlayingInfoPropertyPlaybackRate] = 1.0 if self.is_playing() else 0.0
-            
-            # Try to add artwork
-            if hasattr(self.current_track, 'thumb') and self.plex:
-                try:
-                    thumb_url = self.plex.url(self.current_track.thumb)
-                    response = requests.get(thumb_url, headers={'X-Plex-Token': self.plex._token})
-                    if response.status_code == 200:
-                        with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as temp_file:
-                            temp_file.write(response.content)
-                            image = NSImage.alloc().initWithContentsOfFile_(temp_file.name)
-                            if image:
-                                artwork = MediaPlayer.MPMediaItemArtwork.alloc().initWithImage_(image)
-                                info[MediaPlayer.MPMediaItemPropertyArtwork] = artwork
-                            os.unlink(temp_file.name)
-                except Exception as e:
-                    print(f"Error setting artwork: {e}")
-            self.media_center_delegate.update_now_playing(info)
-        except Exception as e:
-            print(f"Error updating Media Center: {e}")
+            self.media_center.update_now_playing(
+                self.current_track,
+                self.is_playing(),
+                current_pos
+            )
+        except Exception:
+            # Silently ignore media center update errors
+            pass
 
     def _play_track_impl(self) -> bool:
         """Internal implementation of track playback."""
@@ -451,10 +432,30 @@ class Player(QObject):
             if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                 self._player.stop()
             stream_url = self.get_stream_url()
-            print(f"Track URL: {stream_url}")
-            self._player.setSource(QUrl(stream_url))
+            print(f"Playing track from URL: {stream_url}")
+            
+            # Download the track to a temporary file
+            response = requests.get(stream_url, stream=True)
+            if response.status_code != 200:
+                print(f"Failed to download track: {response.status_code}")
+                return False
+                
+            temp_file = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
+            print(f"Downloading track to temporary file: {temp_file.name}")
+            
+            for chunk in response.iter_content(chunk_size=8192):
+                if chunk:
+                    temp_file.write(chunk)
+            temp_file.close()
+            
+            # Set the media source to the temporary file
+            print(f"Setting media source to: {temp_file.name}")
+            self._player.setSource(QUrl.fromLocalFile(temp_file.name))
+            
             print("Starting playback...")
             self._player.play()
+            print("Playback started successfully")
+            
             QTimer.singleShot(120, self._update_media_center)
             return True
         except Exception as e:
