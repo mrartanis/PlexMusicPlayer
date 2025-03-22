@@ -13,6 +13,7 @@ dist/
 build/
 *.egg-info/
 *.egg
+__main__.spec
 
 # IDE specific files
 .idea/

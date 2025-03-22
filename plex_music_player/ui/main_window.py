@@ -1,3 +1,5 @@
+import sys
+
 from PyQt6.QtWidgets import (
     QMainWindow,
     QWidget,
@@ -9,10 +11,11 @@ from PyQt6.QtWidgets import (
     QSlider,
     QDialog,
 )
+from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot
 from plex_music_player.models.player import PlayerThread
 from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog
-from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image
+from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image, pyintaller_resource_path
 
 
 class MainWindow(QMainWindow):
@@ -54,11 +57,20 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Error connecting.\nPlease press 'Connect to Plex'.")
             self.connect_button.show()
 
+    def __load_windows_icons(self) -> None:
+        if sys.platform == "win32":
+            import ctypes
+            myappid = u'mycompany.myproduct.subproduct.version'  # arbitrary string
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+            self.setWindowIcon(QIcon(pyintaller_resource_path("icon/icon_256x256.png")))
+
+
     def setup_ui(self, show_connect_only: bool = True) -> None:
         """Updated setup_ui method to keep the track info label truly centered,
         especially in narrow windows."""
         self.setWindowTitle("Plex Music Player")
-        
+        self.__load_windows_icons()
+
         # Set margins and spacing for the main layout
         layout = QVBoxLayout()
         layout.setContentsMargins(10, 10, 10, 10)

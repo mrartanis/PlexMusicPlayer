@@ -78,7 +78,7 @@ class ConnectionDialog(QDialog):
             self.plex = PlexServer(url, token)
             # Save credentials in main window
             if hasattr(self.parent(), 'player'):
-                self.parent().player.connect(url, token)
+                self.parent().player.connect_server(url, token)
             self.accept()
         except Unauthorized:
             QMessageBox.critical(self, "Error", "Invalid token")

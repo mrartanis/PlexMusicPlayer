@@ -1,8 +1,9 @@
+import sys
+import os
 from typing import Optional, Tuple
 from plexapi.server import PlexServer
 from plexapi.audio import Track
 from PyQt6.QtGui import QImage, QPixmap
-from PyQt6.QtCore import Qt
 
 def format_time(ms: int) -> str:
     total_seconds = ms // 1000
@@ -37,4 +38,15 @@ def load_cover_image(plex: PlexServer, track: Track, size: Tuple[int, int] = (20
         return QPixmap.fromImage(image)
     except Exception as e:
         print(f"Error loading cover: {e}")
-        return None 
+        return None
+
+
+def pyintaller_resource_path(relative_path) -> str | bytes:
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
