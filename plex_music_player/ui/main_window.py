@@ -405,12 +405,13 @@ class MainWindow(QMainWindow):
         """Toggle play/pause state. If no track is loaded but a playlist exists,
         start playing the first track and update the UI (including loading the cover)."""
         if not self.player.current_track and self.player.playlist:
+            # Если нет текущего трека, но есть плейлист - начинаем с первого трека
             self.player.current_playlist_index = 0
             self.player.current_track = self.player.playlist[0]
-        if not self.player.is_playing():
             if not self.player._play_track_impl():
                 return
         else:
+            # Если трек уже загружен, просто переключаем воспроизведение/паузу
             self.player.toggle_play()
         self.update_playback_ui()
 

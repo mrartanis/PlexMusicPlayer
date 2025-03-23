@@ -169,23 +169,32 @@ class Player(QObject):
 
     def _on_playback_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
         """Handle playback state changes safely."""
-        print(f"Playback state changed: {state}")
+        print(f"[_on_playback_state_changed] State changed to: {state}")
+        print(f"[_on_playback_state_changed] Current position: {self._player.position() if self._player else 'No player'}")
+        
         if state == QMediaPlayer.PlaybackState.StoppedState:
             current_pos = self.get_current_position()
+            print(f"[_on_playback_state_changed] Current position on stop: {current_pos}")
+            # Save position before stopping
+            self._last_position = current_pos
+            print(f"[_on_playback_state_changed] Saved last position: {self._last_position}")
+            
             # Check if current_track exists before accessing its duration
             if self.current_track:
                 track_duration = self.current_track.duration / 1000.0  # Duration in seconds
+                print(f"[_on_playback_state_changed] Track duration: {track_duration}")
                 if current_pos >= track_duration - 1:
-                    print("Track is nearing its end, playing next track...")
+                    print("[_on_playback_state_changed] Track is nearing its end, playing next track...")
                     if self.auto_play:
                         if not self.play_next_track():
-                            print("No more tracks to play.")
+                            print("[_on_playback_state_changed] No more tracks to play.")
                         else:
-                            print("Next track started.")
+                            print("[_on_playback_state_changed] Next track started.")
             else:
-                print("No current track available.")
+                print("[_on_playback_state_changed] No current track available.")
+                
         is_playing = state == QMediaPlayer.PlaybackState.PlayingState
-        print(f"Player state: {'Playing' if is_playing else 'Paused/Stopped'}")
+        print(f"[_on_playback_state_changed] Player state: {'Playing' if is_playing else 'Paused/Stopped'}")
         self.playback_state_changed.emit(is_playing)
         QTimer.singleShot(100, self._update_media_center)
 
@@ -213,12 +222,26 @@ class Player(QObject):
         if self._player is None:
             print("Player not initialized!")
             return
+            
+        print(f"[toggle_play] Current state: {self._player.playbackState()}")
+        print(f"[toggle_play] Current position: {self._player.position()}")
+        
         if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            print("[toggle_play] Pausing playback...")
             self._player.pause()
             self.playback_state_changed.emit(False)
         else:
+            print("[toggle_play] Starting playback...")
+            if self._player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
+                print("[toggle_play] Player was stopped, seeking to last position...")
+                last_pos = self._last_position
+                print(f"[toggle_play] Last position was: {last_pos}")
+                self._player.setPosition(last_pos)
             self._player.play()
             self.playback_state_changed.emit(True)
+            
+        print(f"[toggle_play] New state: {self._player.playbackState()}")
+        print(f"[toggle_play] New position: {self._player.position()}")
         QTimer.singleShot(100, self._update_media_center)
 
     @pyqtSlot(int)
