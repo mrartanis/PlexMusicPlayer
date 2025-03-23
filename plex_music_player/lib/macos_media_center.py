@@ -2,7 +2,6 @@ import sys
 from typing import Any, Optional
 from plexapi.audio import Track
 from plex_music_player.lib.media_center import MediaCenterInterface
-import os
 from PyQt6.QtCore import QObject
 from plex_music_player.models.player import Player
 

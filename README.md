@@ -97,14 +97,19 @@ python -m plex_music_player.main
 
 ## Media Center Integration
 
-The player integrates with macOS Media Center, providing:
-- Track information in the Now Playing widget
-- Album artwork in the Media Center
+The player integrates with macOS Media Center and Windows Media Keys, providing:
+- Track information in the Now Playing widget (macOS)
+- Album artwork in the Media Center (macOS)
 - Media controls from:
-  - Media Center widget
-  - Touch Bar
-  - Media keys on keyboard
-  - Control Center
+  - Media Center widget (macOS)
+  - Touch Bar (macOS)
+  - Media keys on keyboard (macOS and Windows)
+  - Control Center (macOS)
+
+## Known Issues
+
+- **Timer Warning**: After pausing a track, you might see a "QObject::killTimer: Timers cannot be stopped from another thread" warning in the console. This is a known Qt issue and doesn't affect playback functionality.
+- **Media Keys**: On Windows, media keys might take a few seconds to start working after application launch.
 
 ## License
 

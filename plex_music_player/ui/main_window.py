@@ -405,13 +405,13 @@ class MainWindow(QMainWindow):
         """Toggle play/pause state. If no track is loaded but a playlist exists,
         start playing the first track and update the UI (including loading the cover)."""
         if not self.player.current_track and self.player.playlist:
-            # Если нет текущего трека, но есть плейлист - начинаем с первого трека
+            # If no current track but playlist exists, start with the first track
             self.player.current_playlist_index = 0
             self.player.current_track = self.player.playlist[0]
             if not self.player._play_track_impl():
                 return
         else:
-            # Если трек уже загружен, просто переключаем воспроизведение/паузу
+            # If track is already loaded, just toggle play/pause
             self.player.toggle_play()
         self.update_playback_ui()
 
@@ -466,9 +466,9 @@ class MainWindow(QMainWindow):
 
     def clear_playlist(self) -> None:
         """Clear the playlist and safely pause playback if necessary."""
-        # Pause playback if a track is currently playing, since no stop() method exists
+        # Pause playback if a track is currently playing
         if self.player.is_playing():
-            self.player.toggle_play()  # Pause playback
+            self.player.toggle_play()
         # Clear current track to avoid NoneType attribute errors
         self.player.current_track = None
 
