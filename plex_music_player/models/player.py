@@ -5,7 +5,6 @@ from plexapi.server import PlexServer
 from plexapi.audio import Track, Album, Artist
 from PyQt6.QtCore import QObject, pyqtSignal, QTimer, QUrl, QThread, pyqtSlot
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
-import tempfile
 import requests
 import random
 import sys
@@ -16,72 +15,6 @@ if sys.platform == 'darwin':
     from AppKit import NSImage
     import objc
     import MediaPlayer
-
-    class MediaCenterDelegate(NSObject):
-        def init(self):
-            self = objc.super(MediaCenterDelegate, self).init()
-            if self is None:
-                return None
-            
-            # Initialize command center
-            command_center = MediaPlayer.MPRemoteCommandCenter.sharedCommandCenter()
-            
-            # Get commands
-            play_command = command_center.playCommand()
-            pause_command = command_center.pauseCommand()
-            toggle_command = command_center.togglePlayPauseCommand()
-            next_command = command_center.nextTrackCommand()
-            prev_command = command_center.previousTrackCommand()
-            change_playback_position_command = command_center.changePlaybackPositionCommand()
-            
-            # Add handlers
-            play_command.addTargetWithHandler_(self.handlePlayCommand_)
-            pause_command.addTargetWithHandler_(self.handlePauseCommand_)
-            toggle_command.addTargetWithHandler_(self.handleTogglePlayPauseCommand_)
-            next_command.addTargetWithHandler_(self.handleNextTrackCommand_)
-            prev_command.addTargetWithHandler_(self.handlePreviousTrackCommand_)
-            change_playback_position_command.addTargetWithHandler_(self.handleSeekCommand_)
-            
-            return self
-            
-        @objc.python_method
-        def set_player(self, player):
-            self.player = player
-            
-        def handlePlayCommand_(self, event):
-            if not self.player.is_playing():
-                self.player.toggle_play()
-            return 1  # MPRemoteCommandHandlerStatusSuccess
-            
-        def handlePauseCommand_(self, event):
-            if self.player.is_playing():
-                self.player.toggle_play()
-            return 1  # MPRemoteCommandHandlerStatusSuccess
-            
-        def handleTogglePlayPauseCommand_(self, event):
-            self.player.toggle_play()
-            return 1  # MPRemoteCommandHandlerStatusSuccess
-            
-        def handleNextTrackCommand_(self, event):
-            self.player.play_next_track()
-            return 1  # MPRemoteCommandHandlerStatusSuccess
-            
-        def handlePreviousTrackCommand_(self, event):
-            self.player.play_previous_track()
-            return 1  # MPRemoteCommandHandlerStatusSuccess
-
-        @objc.python_method
-        def update_now_playing(self, info_dict):
-            try:
-                MediaPlayer.MPNowPlayingInfoCenter.defaultCenter().setNowPlayingInfo_(info_dict)
-            except Exception as e:
-                print(f"Error updating Now Playing: {e}")
-
-        def handleSeekCommand_(self, event):
-            new_position = event.positionTime()
-            if self.player:
-                self.player.seek_position(int(new_position * 1000))  # Convert to milliseconds
-            return 1  # MPRemoteCommandHandlerStatusSuccess
 
 class Player(QObject):
     """Class for managing music playback in a separate thread."""
