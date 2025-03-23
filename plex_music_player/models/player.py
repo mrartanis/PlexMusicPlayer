@@ -261,7 +261,8 @@ class Player(QObject):
         if abs(position - self._last_position) > 1000:  # Update if change is more than 1 second
             self.position_changed.emit(position)
             self._last_position = position
-            QTimer.singleShot(0, self._update_media_center)
+            if position % 1000 == 0:
+                QTimer.singleShot(0, self._update_media_center)
 
     def _on_duration_changed(self, duration: int) -> None:
         """Handle duration changes."""
@@ -434,23 +435,9 @@ class Player(QObject):
             stream_url = self.get_stream_url()
             print(f"Playing track from URL: {stream_url}")
             
-            # Download the track to a temporary file
-            response = requests.get(stream_url, stream=True)
-            if response.status_code != 200:
-                print(f"Failed to download track: {response.status_code}")
-                return False
-                
-            temp_file = tempfile.NamedTemporaryFile(suffix='.mp3', delete=False)
-            print(f"Downloading track to temporary file: {temp_file.name}")
-            
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    temp_file.write(chunk)
-            temp_file.close()
-            
-            # Set the media source to the temporary file
-            print(f"Setting media source to: {temp_file.name}")
-            self._player.setSource(QUrl.fromLocalFile(temp_file.name))
+            # Set the media source directly to the URL
+            print(f"Setting media source to URL: {stream_url}")
+            self._player.setSource(QUrl(stream_url))
             
             print("Starting playback...")
             self._player.play()

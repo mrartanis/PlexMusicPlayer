@@ -85,43 +85,36 @@ if sys.platform == 'win32':
             
         def update_now_playing(self, track: Track, is_playing: bool, position: int) -> None:
             """Update the now playing information in Windows media center."""
-            if not self.player:
-                return
-                
-            try:
-                # Create Windows Media Player object
-                wmp = win32com.client.Dispatch("MediaPlayer.MediaPlayer")
-                
-                # Set media information
-                wmp.CurrentMedia.Name = track.title
-                wmp.CurrentMedia.Artist = track.grandparentTitle
-                wmp.CurrentMedia.Album = track.parentTitle
-                
-                # Set playback state
-                if is_playing:
-                    wmp.Play()
-                else:
-                    wmp.Pause()
-                    
-                # Set position
-                wmp.CurrentPosition = position / 1000.0  # Convert to seconds
-                
-            except Exception:
-                # Silently ignore media center update errors
-                pass
+            pass
                 
         def clear_now_playing(self) -> None:
             """Clear the now playing information from Windows media center."""
             if not self.player:
+                print("DEBUG: Player not set, skipping clear_now_playing")
                 return
                 
             try:
+                print("DEBUG: Creating Windows Media Player object...")
                 # Create Windows Media Player object
-                wmp = win32com.client.Dispatch("MediaPlayer.MediaPlayer")
-                wmp.Stop()
-                wmp.CurrentMedia = None
-            except Exception:
-                # Silently ignore media center update errors
+                wmp = win32com.client.Dispatch("WMPlayer.OCX")
+                print("DEBUG: WMP object created successfully")
+                
+                print("DEBUG: Stopping playback...")
+                wmp.controls.stop()
+                print("DEBUG: Playback stopped")
+                
+                print("DEBUG: Clearing current media...")
+                wmp.currentMedia = None
+                print("DEBUG: Current media cleared")
+                
+                print("DEBUG: Media information cleared successfully")
+                
+            except Exception as e:
+                print(f"DEBUG: Error in clear_now_playing:")
+                print(f"DEBUG: Exception type: {type(e).__name__}")
+                print(f"DEBUG: Exception message: {str(e)}")
+                print(f"DEBUG: Full exception details: {repr(e)}")
+                # Still silently continue after logging the error
                 pass
                 
         def set_player(self, player: Any) -> None:
