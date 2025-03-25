@@ -21,7 +21,7 @@ jobs:
         with:
           context: .
           platforms: linux/${{ matrix.arch }}
-          dockerfile-inline: |
+          file: |
             FROM ubuntu:22.04
 
             RUN apt update && apt install -y python3.12 python3-pip clang libpipewire-0.3-0 pipewire libxcb-cursor0 patchelf
@@ -34,7 +34,7 @@ jobs:
             RUN chmod +x __main__.bin && mv __main__.bin PlexMusicPlayer_linux_${TARGETARCH}
 
             CMD ["sleep", "infinity"]
-          outputs: type=local,dest=./output
+          outputs: type=local,dest=./Dockerfile
 
       - name: Upload Linux binary
         uses: actions/upload-artifact@v4
@@ -101,4 +101,5 @@ jobs:
       - name: Upload macOS app
         uses: actions/upload-artifact@v4
         with:
-          name: PlexMusicPlayer_macos_${
+          name: PlexMusicPlayer_macos_${{ matrix.arch }}
+          path: PlexMusicPlayer_macos_${{ matrix.arch }}
