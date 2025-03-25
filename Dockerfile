@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && apt-get install -y --no-install-recommends \
     python3.12 python3.12-dev clang libpipewire-0.3-0 pipewire libxcb-cursor0 patchelf zlib1g-dev zlib1g libz-dev
 
-RUN if [ "$TARGETARCH" = "arm64" ]; then add-apt-repository universe && apt-get update && apt-get install -y qtbase6-dev; fi
+RUN if [ "$TARGETARCH" = "arm64" ]; then add-apt-repository universe && apt-get update && apt-get install -y qt6-base-dev; fi
 
 RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 
 COPY . /app
