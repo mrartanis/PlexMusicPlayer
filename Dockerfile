@@ -1,11 +1,15 @@
 FROM ubuntu:22.04
 
-RUN apt-get update && apt-get install -y software-properties-common \
-    && add-apt-repository -y ppa:deadsnakes/ppa \
-    && apt-get update \
-    && apt-get install -y python3.12 python3.12-distutils python3.12-venv python3-pip
-RUN apt-get install -y clang libpipewire-0.3-0 pipewire libxcb-cursor0 patchelf
-
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    apt-transport-https \
+    ca-certificates \
+    gnupg \
+ && add-apt-repository -y ppa:deadsnakes/ppa \
+ && apt-get update \
+ && apt-get install -y --no-install-recommends \
+    python3.12 python3.12-distutils python3.12-venv python3-pip \
+    clang libpipewire-0.3-0 pipewire libxcb-cursor0 patchelf
 COPY . /app
 WORKDIR /app
 
