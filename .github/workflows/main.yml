@@ -21,7 +21,7 @@ jobs:
         with:
           context: .
           platforms: linux/${{ matrix.arch }}
-          file: ./Dockerfile  # <-- явно указываем путь к Dockerfile
+          file: ./Dockerfile 
           outputs: type=local,dest=./output
 
           - name: Upload Linux binary
