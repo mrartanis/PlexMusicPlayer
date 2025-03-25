@@ -23,7 +23,7 @@ WORKDIR /app
 
 RUN python3.12 -m pip install --upgrade pip && python3.12 -m pip install -r requirements.txt
 RUN CC=clang CXX=clang++ nuitka --onefile --plugin-enable=pyqt6 plex_music_player/__main__.py
-RUN chmod +x __main__.bin && \
+RUN chmod +x __main__.bin &&  mkdir output && \
     if [ "$TARGETARCH" = "arm64" ]; then \
         ls -lah; \
         mv __main__.bin PlexMusicPlayer_linux_arm64; \
@@ -33,6 +33,7 @@ RUN chmod +x __main__.bin && \
     else \
         mv __main__.bin PlexMusicPlayer_linux_${TARGETARCH}; \
         ls -lah; \
-    fi
+    fi; \
+    cp PlexMusicPlayer_linux* ./output/
 
 CMD ["sleep", "infinity"]
