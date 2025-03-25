@@ -1,22 +1,23 @@
 # Plex Music Player
 
-A modern music player for Plex Media Server with a beautiful UI and macOS Media Center integration.
+A modern music player for Plex Media Server, integrated with Mac Os media center and media keys on windows.
 
 ![Screenshot](screenshot.png)
 
 CAUTON! AI-generated
 
 Should work on OSX, windows and linux.
-Tested only on osx 15 with arm processor.
+Tested only on osx 15 with arm processor and windows 11
 
 ## Features
 
-- 🎵 Beautiful and modern UI with dark theme
+- 🎵 QT6 dark theme ui.
 - 🎨 Album artwork display
 - 📱 macOS Media Center integration
   - Now Playing information
   - Media controls (play/pause, next/previous track)
   - Album artwork in Media Center
+- ⊞ Windows media keys integration
 - 🎯 Automatic connection to Plex server at startup
 - 🔄 Playlist management
   - Add/remove tracks
@@ -33,18 +34,14 @@ Tested only on osx 15 with arm processor.
   - Album
   - Year
   - Duration
-- 🔍 Search functionality
-  - Search by title, artist, or album
-  - Real-time search results
 - 💾 Configuration persistence
   - Server connection details
-  - Last played track
   - Playlist state
 
 ## Requirements
 
 - Python 3.11 (tested on)
-- Plex Media Server
+- Access to Plex Media Server via network
 - PyQt6
 - plexapi
 - requests
