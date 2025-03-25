@@ -17,8 +17,6 @@ RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12
 COPY . /app
 WORKDIR /app
 
-RUN ls -la /usr/lib/x86_64-linux-gnu/libz*
-
 RUN python3.12 -m pip install --upgrade pip && python3.12 -m pip install -r requirements.txt
 RUN CC=clang CXX=clang++ nuitka --onefile --plugin-enable=pyqt6 plex_music_player/__main__.py \
     && chmod +x __main__.bin && mv __main__.bin PlexMusicPlayer_linux_${TARGETARCH}
