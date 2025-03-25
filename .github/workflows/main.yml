@@ -24,11 +24,11 @@ jobs:
           file: ./Dockerfile 
           outputs: type=local,dest=./output
 
-          - name: Upload Linux binary
-            uses: actions/upload-artifact@v4
-            with:
-              name: PlexMusicPlayer_linux_${{ matrix.arch }}
-              path: output/PlexMusicPlayer_linux_${{ matrix.arch }}
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlexMusicPlayer_linux_${{ matrix.arch }}
+          path: output/PlexMusicPlayer_linux_${{ matrix.arch }}
 
   build-windows:
     runs-on: windows-latest
