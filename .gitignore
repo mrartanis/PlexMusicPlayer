@@ -14,6 +14,7 @@ build/
 *.egg-info/
 *.egg
 __main__.spec
+__main__.bin
 
 # IDE specific files
 .idea/
