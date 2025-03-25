@@ -21,7 +21,19 @@ jobs:
         with:
           context: .
           platforms: linux/${{ matrix.arch }}
-          file: Dockerfile.linux
+          dockerfile-inline: |
+            FROM ubuntu:22.04
+
+            RUN apt update && apt install -y python3.12 python3-pip clang libpipewire-0.3-0 pipewire libxcb-cursor0 patchelf
+
+            COPY . /app
+            WORKDIR /app
+
+            RUN pip install -r requirements.txt
+            RUN CC=clang CXX=clang++ nuitka --onefile --plugin-enable=pyqt6 plex_music_player/__main__.py
+            RUN chmod +x __main__.bin && mv __main__.bin PlexMusicPlayer_linux_${TARGETARCH}
+
+            CMD ["sleep", "infinity"]
           outputs: type=local,dest=./output
 
       - name: Upload Linux binary
@@ -89,5 +101,4 @@ jobs:
       - name: Upload macOS app
         uses: actions/upload-artifact@v4
         with:
-          name: PlexMusicPlayer_macos_${{ matrix.arch }}
-          path: PlexMusicPlayer_macos_${{ matrix.arch }}
+          name: PlexMusicPlayer_macos_${
