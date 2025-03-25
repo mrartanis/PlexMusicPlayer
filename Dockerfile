@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
  && add-apt-repository -y ppa:deadsnakes/ppa \
  && apt-get update \
  && apt-get install -y --no-install-recommends \
-    python3.12 python3.12-dev clang libpipewire-0.3-0 pipewire libxcb-cursor0 patchelf
+    python3.12 python3.12-dev clang libpipewire-0.3-0 pipewire libxcb-cursor0 patchelf zlib1g-dev zlib1g
 
 RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 
 COPY . /app
