@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:22.04 as builder
 
 ARG TARGETARCH
 ENV DEBIAN_FRONTEND=noninteractive
@@ -23,20 +23,16 @@ WORKDIR /app
 
 RUN python3.12 -m pip install --upgrade pip && python3.12 -m pip install -r requirements.txt
 RUN CC=clang CXX=clang++ nuitka --onefile --plugin-enable=pyqt6 plex_music_player/__main__.py
-RUN chmod +x __main__.bin &&  mkdir -p /app/output /output ./output && \
+RUN chmod +x __main__.bin && \
     if [ "$TARGETARCH" = "arm64" ]; then \
-        ls -lah; \
         mv __main__.bin PlexMusicPlayer_linux_arm64; \
     elif [ "$TARGETARCH" = "amd64" ]; then \
-        ls -lah; \ 
         mv __main__.bin PlexMusicPlayer_linux_x86_64; \
     else \
         mv __main__.bin PlexMusicPlayer_linux_${TARGETARCH}; \
-        ls -lah; \
-    fi; \
-    echo "cp"; \
-    for output_dir in /app/output /output ./output; do \
-        cp PlexMusicPlayer_linux* $output_dir; \
-    done
+    fi
+
+FROM scratch
+COPY --from=builder /app/PlexMusicPlayer_linux* /
 
 CMD ["sleep", "infinity"]
