@@ -1,13 +1,13 @@
 # Plex Music Player
 
-A modern music player for Plex Media Server, integrated with Mac Os media center and media keys on windows.
+A modern music player for Plex Media Server.
 
 ![Screenshot](screenshot.png)
 
 CAUTON! AI-generated
 
 Should work on OSX, windows and linux.
-Tested only on osx 15 with arm processor and windows 11
+Tested only on osx 15 with arm processor, windows 11, ubuntu 24.04
 
 ## Features
 
@@ -36,61 +36,89 @@ Tested only on osx 15 with arm processor and windows 11
   - Duration
 - 💾 Configuration persistence
   - Server connection details
+  - Last played track
   - Playlist state
 
-## Requirements
+## Building from source
 
-- Python 3.11 (tested on)
-- Access to Plex Media Server via network
-- PyQt6
-- plexapi
-- requests
-
-## Installation
-
-1. Clone the repository:
+First, create and activate virtual environment (not needed for ARM64 build):
 ```bash
-git clone https://github.com/yourusername/plex_music_player.git
-cd plex_music_player
-```
-
-2. Create and activate a virtual environment:
-```bash
+# Create virtual environment
 python -m venv env
-source env/bin/activate  # On macOS/Linux
-```
 
-3. Install dependencies:
-```bash
+# Activate virtual environment
+# On Windows:
+.\env\Scripts\activate
+# On macOS/Linux:
+source env/bin/activate
+
+# Install dependencies
 pip install -r requirements.txt
 ```
 
-## Usage
+### Windows
+```powershell
+# Ensure virtual environment is activated
+.\env\Scripts\activate
 
-1. Run the application:
+# Run PowerShell script
+.\build_windows.ps1
+```
+This will create `PlexMusicPlayer_windows_x86-64.exe` using PyInstaller.
+
+### macOS
 ```bash
-python -m plex_music_player.main
+# Ensure virtual environment is activated
+source env/bin/activate
+
+# Run build script
+./build_app_osx.sh
+```
+This will create a macOS app bundle in `dist/` directory using py2app.
+
+### Linux (x86_64)
+```bash
+# Ensure virtual environment is activated
+source env/bin/activate
+
+# Run build script
+./build_linux.sh
+```
+This will create `PlexMusicPlayer_linux_x86_64` binary using PyInstaller.
+
+### Linux (ARM64)
+For ARM64 builds, we use Docker with BuildKit. First, prepare the build environment:
+
+```bash
+# Enable QEMU for ARM64 emulation
+docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+
+# Create and configure buildx builder
+docker buildx create --use --name multiarch-builder
+docker buildx inspect --bootstrap
 ```
 
-2. On first run, enter your Plex server details:
-   - Server URL (e.g., http://localhost:32400)
-   - Username
-   - Token
+Then build the ARM64 binary:
+```bash
+# Build ARM64 binary
+docker buildx build --platform linux/arm64 --output type=local,dest=./output .
+```
+The binary will be created in `output/PlexMusicPlayer_linux_arm64`.
 
-3. The application will connect to your Plex server and display your music library.
+You can optimize ARM64 build performance by setting QEMU parameters:
+```bash
+# Optional: Set QEMU parameters for better performance
+export QEMU_CPU=max
+export QEMU_SMP=8  # Adjust based on your CPU cores
+```
 
-## Controls
+### Build Requirements
+- Windows: Python 3.12, PyQt6
+- macOS: Python 3.11, PyQt6
+- Linux x86_64: Python 3.12, PyQt6, build-essential
+- Linux ARM64: Docker with BuildKit enabled
 
-- **Play/Pause**: Space or Play/Pause button
-- **Next Track**: Right arrow or Next button
-- **Previous Track**: Left arrow or Previous button
-- **Volume**: Up/Down arrows or Volume slider
-- **Seek**: Click on progress bar
-- **Search**: Type in the search box
-- **Add to Playlist**: Double-click on a track
-- **Remove from Playlist**: Select track and press Delete
-- **Shuffle Playlist**: Click the shuffle button
-- **Clear Playlist**: Click the clear button
+All platforms require the dependencies listed in `requirements.txt`.
 
 ## Media Center Integration
 
@@ -111,3 +139,4 @@ The player integrates with macOS Media Center and Windows Media Keys, providing:
 ## License
 
 feel free to use this project as you wish. 
+
