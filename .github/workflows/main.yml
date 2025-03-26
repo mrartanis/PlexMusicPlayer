@@ -97,3 +97,35 @@ jobs:
         with:
           name: PlexMusicPlayer_macos_${{ matrix.arch }}
           path: PlexMusicPlayer_macos_${{ matrix.arch }}
+
+  build-linux-arm:
+    runs-on: ubuntu-latest-arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qmake6 build-essential
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build Linux ARM binary
+        run: |
+          pyinstaller -F --add-data "MusicApp.iconset/icon_256x256.png:icon" plex_music_player/__main__.py
+          mv dist/__main__ PlexMusicPlayer_linux_arm64
+
+      - name: Upload Linux ARM binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: PlexMusicPlayer_linux_arm64
+          path: PlexMusicPlayer_linux_arm64
