@@ -57,11 +57,12 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Error connecting.\nPlease press 'Connect to Plex'.")
             self.connect_button.show()
 
-    def __load_windows_icons(self) -> None:
+    def __load_window_icons(self) -> None:
         if sys.platform == "win32":
             import ctypes
             myappid = u'mycompany.myproduct.subproduct.version'  # arbitrary string
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        if sys.platform in ["linux",  "win32"]:
             self.setWindowIcon(QIcon(pyintaller_resource_path("icon/icon_256x256.png")))
 
 
@@ -69,7 +70,7 @@ class MainWindow(QMainWindow):
         """Updated setup_ui method to keep the track info label truly centered,
         especially in narrow windows."""
         self.setWindowTitle("Plex Music Player")
-        self.__load_windows_icons()
+        self.__load_window_icons()
 
         # Set margins and spacing for the main layout
         layout = QVBoxLayout()
