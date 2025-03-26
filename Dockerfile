@@ -34,6 +34,8 @@ RUN chmod +x __main__.bin &&  mkdir output && \
         mv __main__.bin PlexMusicPlayer_linux_${TARGETARCH}; \
         ls -lah; \
     fi; \
-    cp PlexMusicPlayer_linux* ./output/
+    echo "cp and ls"; \
+    cp PlexMusicPlayer_linux* ./output/ ; \
+    ls -lah ; ls -lah ./output
 
 CMD ["sleep", "infinity"]
