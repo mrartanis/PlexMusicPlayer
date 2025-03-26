@@ -9,4 +9,5 @@ mv dist/__main__ PlexMusicPlayer_linux_x86_64
 # docker buildx inspect --bootstrap
 
 # Then you can build it with:
-# docker buildx build --platform linux/arm64 -t plexmusicplayer:latest .
+
+# QEMU_IOTHREADS=4 QEMU_IOTHREAD_POOL_SIZE=1024 QEMU_AIO=native QEMU_DRIVE_TYPE="virtio" QEMU_DRIVE_OPTS="cache=unsafe" QEMU_CPU=max QEMU_SMP=8 docker buildx build --platform linux/arm64 -t plexmusicplayer:latest --output type=local,dest=./output . 2>&1 | tee build.log

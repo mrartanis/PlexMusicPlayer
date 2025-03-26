@@ -1,38 +1,49 @@
-FROM ubuntu:22.04 as builder
+# syntax=docker/dockerfile:1.4
+
+FROM python:3.12.9-bookworm as base
 
 ARG TARGETARCH
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    software-properties-common \
-    apt-transport-https \
-    ca-certificates \
-    gnupg curl \
- && add-apt-repository -y ppa:deadsnakes/ppa \
- && apt-get update \
- && apt-get install -y --no-install-recommends \
-    python3.12 python3.12-dev clang libpipewire-0.3-0 pipewire libxcb-cursor0 patchelf zlib1g-dev zlib1g libz-dev
+# Configure dpkg to use unsafe io for speed
+RUN echo "force-unsafe-io" > /etc/dpkg/dpkg.cfg.d/force-unsafe-io
 
-RUN if [ "$TARGETARCH" = "arm64" ]; then \
- add-apt-repository universe && apt-get update && apt-get install -y qt6-base-dev qmake6 qmake6-bin; \
-fi
+# Add labels for better cache control
+LABEL org.opencontainers.image.source="https://github.com/yourusername/PlexMusicPlayer"
+LABEL org.opencontainers.image.description="Plex Music Player for ${TARGETARCH}"
 
-RUN curl -sS https://bootstrap.pypa.io/get-pip.py | python3.12 
-COPY . /app
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    python3-pip \
+    python3-full \
+    python3-pyqt6 \
+    python3-pyqt6.qtmultimedia \
+    build-essential
+
+# Stage 2: Python dependencies
+FROM base AS dependencies
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy only requirements first
+COPY requirements.txt /app/
 WORKDIR /app
 
-RUN python3.12 -m pip install --upgrade pip && python3.12 -m pip install -r requirements.txt
-RUN CC=clang CXX=clang++ nuitka --onefile --plugin-enable=pyqt6 plex_music_player/__main__.py
-RUN chmod +x __main__.bin && \
-    if [ "$TARGETARCH" = "arm64" ]; then \
-        mv __main__.bin PlexMusicPlayer_linux_arm64; \
-    elif [ "$TARGETARCH" = "amd64" ]; then \
-        mv __main__.bin PlexMusicPlayer_linux_x86_64; \
-    else \
-        mv __main__.bin PlexMusicPlayer_linux_${TARGETARCH}; \
-    fi
+SHELL ["/bin/bash", "-c"]
+RUN --mount=type=cache,target=/root/.cache/pip \
+    source /opt/venv/bin/activate && \
+    grep -v "PyQt6" requirements.txt > requirements_filtered.txt && \
+    pip3 install --no-cache-dir -r requirements_filtered.txt pyinstaller
+
+# Stage 3: Build application
+FROM dependencies AS builder
+COPY . /app
+RUN --mount=type=cache,target=/root/.cache/pip \
+    source /opt/venv/bin/activate && \
+    pyinstaller -F --add-data "MusicApp.iconset/icon_256x256.png:icon" plex_music_player/__main__.py && \
+    mv dist/__main__ PlexMusicPlayer_linux_${TARGETARCH}
 
 FROM scratch
 COPY --from=builder /app/PlexMusicPlayer_linux* /
 
-CMD ["sleep", "infinity"]
