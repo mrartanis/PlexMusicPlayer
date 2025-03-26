@@ -26,6 +26,9 @@ FROM base AS dependencies
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Add system site-packages to venv
+RUN python3 -m venv --system-site-packages /opt/venv
+
 # Copy only requirements first
 COPY requirements.txt /app/
 WORKDIR /app
@@ -35,6 +38,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     source /opt/venv/bin/activate && \
     grep -v "PyQt6" requirements.txt > requirements_filtered.txt && \
     pip3 install --no-cache-dir -r requirements_filtered.txt pyinstaller
+
+RUN source /opt/venv/bin/activate && python3 -c "import PyQt6"
 
 # Stage 3: Build application
 FROM dependencies AS builder
