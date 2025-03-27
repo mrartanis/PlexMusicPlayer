@@ -16,11 +16,12 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
+    python3-dev \
     python3-venv \
     python3-pyqt6 \
     python3-pyqt6.qtmultimedia \
-    build-essential \
-    python3-dev
+    qt6-wayland \
+    build-essential
 
 # Stage 2: Python dependencies
 FROM base AS dependencies
