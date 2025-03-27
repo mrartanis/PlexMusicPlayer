@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 
-FROM python:3.12.9-bookworm as base
+FROM ubuntu:noble as base
 
 ARG TARGETARCH
 ENV DEBIAN_FRONTEND=noninteractive
@@ -16,30 +16,25 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
-    python3-full \
+    python3-venv \
     python3-pyqt6 \
     python3-pyqt6.qtmultimedia \
-    build-essential
+    build-essential \
+    python3-dev
 
 # Stage 2: Python dependencies
 FROM base AS dependencies
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+ENV PYTHONPATH="/usr/lib/python3/dist-packages:${PYTHONPATH}"
 
-# Add system site-packages to venv
-RUN python3 -m venv --system-site-packages /opt/venv
-
-# Copy only requirements first
-COPY requirements.txt /app/
 WORKDIR /app
 
 SHELL ["/bin/bash", "-c"]
-RUN --mount=type=cache,target=/root/.cache/pip \
-    source /opt/venv/bin/activate && \
-    grep -v "PyQt6" requirements.txt > requirements_filtered.txt && \
-    pip3 install --no-cache-dir -r requirements_filtered.txt pyinstaller
+RUN pip install plexapi pyinstaller
 
-RUN source /opt/venv/bin/activate && python3 -c "import PyQt6"
+# Verify PyQt6 is available
+RUN python3 -c "import PyQt6"
 
 # Stage 3: Build application
 FROM dependencies AS builder
