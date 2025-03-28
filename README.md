@@ -7,7 +7,7 @@ A modern music player for Plex Media Server.
 CAUTON! AI-generated
 
 Should work on OSX, windows and linux.
-Tested only on osx 15 with arm processor, windows 11, ubuntu 24.04
+Tested on osx 15 and 12 with arm processor, windows 11, ubuntu 24.04 x86_64, ubuntu 24.04 arm
 
 ## Features
 
