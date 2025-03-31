@@ -169,32 +169,32 @@ class Player(QObject):
 
     def _on_playback_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
         """Handle playback state changes safely."""
-        print(f"[_on_playback_state_changed] State changed to: {state}")
-        print(f"[_on_playback_state_changed] Current position: {self._player.position() if self._player else 'No player'}")
+        print(f"State changed to: {state}")
+        print(f"Current position: {self._player.position() if self._player else 'No player'}")
         
         if state == QMediaPlayer.PlaybackState.StoppedState:
             current_pos = self.get_current_position()
-            print(f"[_on_playback_state_changed] Current position on stop: {current_pos}")
+            print(f"Current position on stop: {current_pos}")
             # Save position before stopping
             self._last_position = current_pos
-            print(f"[_on_playback_state_changed] Saved last position: {self._last_position}")
+            print(f"Saved last position: {self._last_position}")
             
             # Check if current_track exists before accessing its duration
             if self.current_track:
                 track_duration = self.current_track.duration / 1000.0  # Duration in seconds
-                print(f"[_on_playback_state_changed] Track duration: {track_duration}")
-                if current_pos >= track_duration - 1:
-                    print("[_on_playback_state_changed] Track is nearing its end, playing next track...")
-                    if self.auto_play:
+                print(f"Track duration: {track_duration}")
+                if self.auto_play:
+                    if current_pos >= track_duration - 1 or current_pos == 0:  # Some bugs hadled here
+                        print("Track is nearing its end or no position report, playing next track...")
                         if not self.play_next_track():
-                            print("[_on_playback_state_changed] No more tracks to play.")
+                            print("No more tracks to play.")
                         else:
-                            print("[_on_playback_state_changed] Next track started.")
+                            print("Next track started.")
             else:
-                print("[_on_playback_state_changed] No current track available.")
+                print("No current track available.")
                 
         is_playing = state == QMediaPlayer.PlaybackState.PlayingState
-        print(f"[_on_playback_state_changed] Player state: {'Playing' if is_playing else 'Paused/Stopped'}")
+        print(f"Player state: {'Playing' if is_playing else 'Paused/Stopped'}")
         self.playback_state_changed.emit(is_playing)
         QTimer.singleShot(100, self._update_media_center)
 
@@ -390,9 +390,6 @@ class Player(QObject):
                 self._player.stop()
             stream_url = self.get_stream_url()
             print(f"Playing track from URL: {stream_url}")
-            
-            # Set the media source directly to the URL
-            print(f"Setting media source to URL: {stream_url}")
             self._player.setSource(QUrl(stream_url))
             
             print("Starting playback...")

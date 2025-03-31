@@ -21,6 +21,7 @@ __main__.bin
 .vscode/
 *.swp
 *.swo
+*.code-workspace
 
 # macOS specific files
 .DS_Store
