@@ -157,8 +157,8 @@ class Player(QObject):
     @pyqtSlot(result=str)
     def get_stream_url(self) -> str:
         """Form the URL for the track stream."""
-        if self.current_track.media[0].container == 'mp3':
-            print("Track is already in MP3 format, downloading without conversion.")
+        if self.current_track.media[0].container in ['mp3', 'flac']:
+            print(f"Track is already in {self.current_track.media[0].container} format, downloading without conversion.")
             media_key = self.current_track.media[0].parts[0].key
             token = self.current_track._server._token
             base_url = self.current_track._server.url(media_key)
@@ -236,7 +236,7 @@ class Player(QObject):
                 print("[toggle_play] Player was stopped, seeking to last position...")
                 last_pos = self._last_position
                 print(f"[toggle_play] Last position was: {last_pos}")
-                self._player.setPosition(last_pos)
+                self._player.setPosition(self._last_position or 0)
             self._player.play()
             self.playback_state_changed.emit(True)
             
