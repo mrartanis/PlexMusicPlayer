@@ -16,6 +16,28 @@ if sys.platform == 'darwin':
     import objc
     import MediaPlayer
 
+class SavedTrack:
+    """Class to store track information without requiring Plex API access."""
+    def __init__(self, title: str, artist: str, album: str, year: Optional[int], key: str, rating_key: str):
+        self.title = title
+        self.grandparentTitle = artist  # To maintain compatibility with Track interface
+        self.parentTitle = album  # To maintain compatibility with Track interface
+        self.year = year
+        self.key = key
+        self.ratingKey = rating_key
+        self.duration = 0  # Will be set when track is played
+        self.media = []  # Will be populated when track is played
+        self.thumb = None  # Album cover URL
+        self._server = None  # Plex server reference
+
+    def getStreamURL(self, audioFormat: str = 'mp3') -> str:
+        """Get stream URL for the track."""
+        if not self.media:
+            return None
+        if self.media[0].container in ['mp3', 'flac']:
+            return self.media[0].parts[0].key
+        return None
+
 class Player(QObject):
     """Class for managing music playback in a separate thread."""
     
@@ -365,14 +387,19 @@ class Player(QObject):
             return
         try:
             current_pos = self._player.position() if self._player else 0
+            
+            # If track is a SavedTrack, set the _server attribute
+            if isinstance(self.current_track, SavedTrack) and not self.current_track._server:
+                self.current_track._server = self.plex
+                
             self.media_center.update_now_playing(
                 self.current_track,
                 self.is_playing(),
                 current_pos
             )
-        except Exception:
-            # Silently ignore media center update errors
-            pass
+        except Exception as e:
+            # Log the error but continue silently
+            print(f"Error updating media center: {e}")
 
     def _play_track_impl(self) -> bool:
         """Internal implementation of track playback."""
@@ -382,7 +409,16 @@ class Player(QObject):
         try:
             if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                 self._player.stop()
-            stream_url = self.get_stream_url()
+            
+            # If track is a SavedTrack and we have media info, use it directly
+            if isinstance(self.current_track, SavedTrack) and self.current_track.media:
+                media_key = self.current_track.media[0]['parts'][0]['key']
+                token = self.plex._token
+                base_url = self.plex.url(media_key)
+                stream_url = f"{base_url}?download=1&X-Plex-Token={token}"
+            else:
+                stream_url = self.get_stream_url()
+                
             print(f"Playing track from URL: {stream_url}")
             self._player.setSource(QUrl(stream_url))
             
@@ -429,14 +465,30 @@ class Player(QObject):
             
             playlist_data = []
             for track in self.playlist:
-                track_data = {
-                    'title': track.title,
-                    'artist': track.grandparentTitle,
-                    'album': track.parentTitle,
-                    'year': track.year if hasattr(track, 'year') else None,
-                    'key': track.key,
-                    'ratingKey': track.ratingKey
-                }
+                if isinstance(track, SavedTrack):
+                    track_data = {
+                        'title': track.title,
+                        'artist': track.grandparentTitle,
+                        'album': track.parentTitle,
+                        'year': track.year,
+                        'key': track.key,
+                        'ratingKey': track.ratingKey,
+                        'duration': track.duration,
+                        'media': [{'container': m.container, 'parts': [{'key': p.key} for p in m.parts]} for m in track.media] if track.media else [],
+                        'thumb': track.thumb
+                    }
+                else:
+                    track_data = {
+                        'title': track.title,
+                        'artist': track.grandparentTitle,
+                        'album': track.parentTitle,
+                        'year': track.year if hasattr(track, 'year') else None,
+                        'key': track.key,
+                        'ratingKey': track.ratingKey,
+                        'duration': track.duration,
+                        'media': [{'container': m.container, 'parts': [{'key': p.key} for p in m.parts]} for m in track.media] if track.media else [],
+                        'thumb': track.thumb if hasattr(track, 'thumb') else None
+                    }
                 playlist_data.append(track_data)
             
             with open(playlist_path, "w") as f:
@@ -450,37 +502,100 @@ class Player(QObject):
     @pyqtSlot()
     def load_playlist(self) -> None:
         """Load the playlist from file."""
+        playlist_path = os.path.expanduser("~/.config/plex_music_player/playlist.json")
+        
+        # If file doesn't exist, just return
+        if not os.path.exists(playlist_path):
+            return
+            
         try:
-            playlist_path = os.path.expanduser("~/.config/plex_music_player/playlist.json")
-            if not os.path.exists(playlist_path):
-                return
-                
+            # Load data from file
             with open(playlist_path, "r") as f:
                 data = json.load(f)
                 
-            if not self.plex:
+            # Check basic data structure
+            if not isinstance(data, dict) or 'playlist' not in data:
+                print("Invalid playlist format: missing 'playlist' field or invalid structure")
+                os.remove(playlist_path)
                 return
                 
+            # Clear current playlist
             self.playlist.clear()
-            for track_data in data['playlist']:
-                try:
-                    results = self.plex.library.search(track_data['title'], libtype="track")
-                    for track in results:
-                        if (track.grandparentTitle == track_data['artist'] and 
-                            track.parentTitle == track_data['album'] and
-                            track.key == track_data['key']):
-                            self.playlist.append(track)
-                            break
-                except Exception as e:
-                    print(f"Error loading track {track_data['title']}: {e}")
-                    continue
             
+            # Check if playlist is a list
+            if not isinstance(data['playlist'], list):
+                print("Invalid playlist format: 'playlist' is not a list")
+                os.remove(playlist_path)
+                return
+                
+            # Check each track in the playlist
+            for track_data in data['playlist']:
+                # Check if track_data is a dictionary
+                if not isinstance(track_data, dict):
+                    print("Invalid track format: track data is not a dictionary")
+                    os.remove(playlist_path)
+                    return
+                    
+                # Check for required fields
+                required_fields = ['title', 'artist', 'album', 'key', 'ratingKey']
+                if not all(field in track_data for field in required_fields):
+                    print("Invalid track format: missing required fields")
+                    os.remove(playlist_path)
+                    return
+                    
+                # Convert fields to strings if needed
+                try:
+                    track = SavedTrack(
+                        title=str(track_data['title']),
+                        artist=str(track_data['artist']),
+                        album=str(track_data['album']),
+                        year=int(track_data['year']) if track_data.get('year') is not None else None,
+                        key=str(track_data['key']),
+                        rating_key=str(track_data['ratingKey'])
+                    )
+                    
+                    # Add optional fields
+                    if 'duration' in track_data:
+                        track.duration = int(track_data['duration'])
+                    if 'media' in track_data and track_data['media']:
+                        track.media = track_data['media']
+                    if 'thumb' in track_data:
+                        track.thumb = track_data['thumb']
+                        
+                    # Set the server reference
+                    track._server = self.plex
+                        
+                    self.playlist.append(track)
+                except (ValueError, TypeError) as e:
+                    print(f"Error converting track data: {e}")
+                    os.remove(playlist_path)
+                    return
+            
+            # Set current index
             self.current_playlist_index = data.get('current_index', -1)
+            
+            # Check if index is within valid range
+            if self.current_playlist_index >= len(self.playlist):
+                self.current_playlist_index = -1
+                
+            # Set current track
             if 0 <= self.current_playlist_index < len(self.playlist):
                 self.current_track = self.playlist[self.current_playlist_index]
+                
+            # Emit playback state changed signal
             self.playback_state_changed.emit(True)
+            
+        except json.JSONDecodeError:
+            print("Invalid playlist file: not a valid JSON")
+            os.remove(playlist_path)
         except Exception as e:
             print(f"Error loading playlist: {e}")
+            # In case of error, clear playlist and remove file
+            self.playlist.clear()
+            self.current_playlist_index = -1
+            self.current_track = None
+            if os.path.exists(playlist_path):
+                os.remove(playlist_path)
 
     @pyqtSlot(object)
     def add_tracks_batch(self, tracks) -> None:
