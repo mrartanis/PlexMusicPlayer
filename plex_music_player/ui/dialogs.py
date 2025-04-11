@@ -113,12 +113,6 @@ class AddTracksDialog(QDialog):
         artists_label = QLabel("Artists")
         artists_label.setObjectName("header_label")
         artists_header.addWidget(artists_label)
-        
-        add_all_artists_button = QPushButton("Add All")
-        add_all_artists_button.setObjectName("add_all_button")
-        add_all_artists_button.clicked.connect(self.add_all_artists)
-        artists_header.addWidget(add_all_artists_button)
-        
         artists_header.addStretch(1)
         artists_layout.addLayout(artists_header)
         
@@ -128,6 +122,12 @@ class AddTracksDialog(QDialog):
         self.artists_list.itemClicked.connect(self.load_albums)
         self.artists_list.itemDoubleClicked.connect(self.add_artist_to_playlist)
         artists_layout.addWidget(self.artists_list)
+        
+        add_all_artists_button = QPushButton("Add All Artists")
+        add_all_artists_button.setObjectName("add_all_button")
+        add_all_artists_button.clicked.connect(self.add_all_artists)
+        artists_layout.addWidget(add_all_artists_button)
+        
         lists_layout.addLayout(artists_layout)
         
         # Albums
@@ -137,12 +137,6 @@ class AddTracksDialog(QDialog):
         albums_label = QLabel("Albums")
         albums_label.setObjectName("header_label")
         albums_header.addWidget(albums_label)
-        
-        add_all_albums_button = QPushButton("Add All")
-        add_all_albums_button.setObjectName("add_all_button")
-        add_all_albums_button.clicked.connect(self.add_all_albums)
-        albums_header.addWidget(add_all_albums_button)
-        
         albums_header.addStretch(1)
         albums_layout.addLayout(albums_header)
         
@@ -161,12 +155,6 @@ class AddTracksDialog(QDialog):
         tracks_label = QLabel("Tracks")
         tracks_label.setObjectName("header_label")
         tracks_header.addWidget(tracks_label)
-        
-        add_all_tracks_button = QPushButton("Add All")
-        add_all_tracks_button.setObjectName("add_all_button")
-        add_all_tracks_button.clicked.connect(self.add_all_tracks)
-        tracks_header.addWidget(add_all_tracks_button)
-        
         tracks_header.addStretch(1)
         tracks_layout.addLayout(tracks_header)
         
@@ -214,10 +202,10 @@ class AddTracksDialog(QDialog):
                 background-color: #0078d4;
                 border: none;
                 border-radius: 3px;
-                padding: 3px 10px;
+                padding: 5px 10px;
                 color: #ffffff;
-                font-size: 11px;
-                margin-left: 10px;
+                font-size: 12px;
+                margin-top: 5px;
             }
             #add_all_button:hover {
                 background-color: #1e8ae6;
