@@ -109,13 +109,16 @@ class AddTracksDialog(QDialog):
         # Artists
         artists_layout = QVBoxLayout()
         artists_header = QHBoxLayout()
+        artists_header.setContentsMargins(0, 0, 0, 5)
         artists_label = QLabel("Artists")
+        artists_label.setObjectName("header_label")
         artists_header.addWidget(artists_label)
         
-        self.refresh_button = QPushButton("🔄")
-        self.refresh_button.setFixedSize(24, 24)
-        self.refresh_button.clicked.connect(self.refresh_library)
-        artists_header.addWidget(self.refresh_button)
+        add_all_artists_button = QPushButton("Add All")
+        add_all_artists_button.setObjectName("add_all_button")
+        add_all_artists_button.clicked.connect(self.add_all_artists)
+        artists_header.addWidget(add_all_artists_button)
+        
         artists_header.addStretch(1)
         artists_layout.addLayout(artists_header)
         
@@ -129,8 +132,20 @@ class AddTracksDialog(QDialog):
         
         # Albums
         albums_layout = QVBoxLayout()
+        albums_header = QHBoxLayout()
+        albums_header.setContentsMargins(0, 0, 0, 5)
         albums_label = QLabel("Albums")
-        albums_layout.addWidget(albums_label)
+        albums_label.setObjectName("header_label")
+        albums_header.addWidget(albums_label)
+        
+        add_all_albums_button = QPushButton("Add All")
+        add_all_albums_button.setObjectName("add_all_button")
+        add_all_albums_button.clicked.connect(self.add_all_albums)
+        albums_header.addWidget(add_all_albums_button)
+        
+        albums_header.addStretch(1)
+        albums_layout.addLayout(albums_header)
+        
         self.albums_list = QListWidget()
         self.albums_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.albums_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -141,8 +156,20 @@ class AddTracksDialog(QDialog):
         
         # Tracks
         tracks_layout = QVBoxLayout()
+        tracks_header = QHBoxLayout()
+        tracks_header.setContentsMargins(0, 0, 0, 5)
         tracks_label = QLabel("Tracks")
-        tracks_layout.addWidget(tracks_label)
+        tracks_label.setObjectName("header_label")
+        tracks_header.addWidget(tracks_label)
+        
+        add_all_tracks_button = QPushButton("Add All")
+        add_all_tracks_button.setObjectName("add_all_button")
+        add_all_tracks_button.clicked.connect(self.add_all_tracks)
+        tracks_header.addWidget(add_all_tracks_button)
+        
+        tracks_header.addStretch(1)
+        tracks_layout.addLayout(tracks_header)
+        
         self.tracks_list = QListWidget()
         self.tracks_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.tracks_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -154,6 +181,11 @@ class AddTracksDialog(QDialog):
         
         # Buttons
         buttons_layout = QHBoxLayout()
+        
+        self.refresh_button = QPushButton("Refresh")
+        self.refresh_button.clicked.connect(self.refresh_library)
+        buttons_layout.addWidget(self.refresh_button)
+        
         buttons_layout.addStretch(1)
         
         close_button = QPushButton("Close")
@@ -177,6 +209,23 @@ class AddTracksDialog(QDialog):
             }
             QPushButton:hover {
                 background-color: #3d3d3d;
+            }
+            #add_all_button {
+                background-color: #0078d4;
+                border: none;
+                border-radius: 3px;
+                padding: 3px 10px;
+                color: #ffffff;
+                font-size: 11px;
+                margin-left: 10px;
+            }
+            #add_all_button:hover {
+                background-color: #1e8ae6;
+            }
+            #header_label {
+                color: #ffffff;
+                font-size: 14px;
+                font-weight: bold;
             }
             QListWidget {
                 background-color: #2d2d2d;
@@ -276,4 +325,41 @@ class AddTracksDialog(QDialog):
         """Adds a single track to the playlist"""
         track_index = self.tracks_list.row(item)
         track = self.player.tracks[track_index]
-        self.parent().add_to_playlist(track) 
+        self.parent().add_to_playlist(track)
+
+    def add_all_artists(self):
+        """Adds all artists to the playlist"""
+        try:
+            all_tracks = []
+            for artist in self.player.artists:
+                albums = artist.albums()
+                for album in albums:
+                    all_tracks.extend(album.tracks())
+            self.parent().add_tracks_batch(all_tracks)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to add all artists: {str(e)}")
+
+    def add_all_albums(self):
+        """Adds all albums from the current artist to the playlist"""
+        try:
+            if not self.albums_list.count():
+                return
+            all_tracks = []
+            for i in range(self.albums_list.count()):
+                album = self.player.albums[i]
+                all_tracks.extend(album.tracks())
+            self.parent().add_tracks_batch(all_tracks)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to add all albums: {str(e)}")
+
+    def add_all_tracks(self):
+        """Adds all tracks from the current album to the playlist"""
+        try:
+            if not self.tracks_list.count():
+                return
+            all_tracks = []
+            for i in range(self.tracks_list.count()):
+                all_tracks.append(self.player.tracks[i])
+            self.parent().add_tracks_batch(all_tracks)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to add all tracks: {str(e)}") 
