@@ -179,17 +179,11 @@ class Player(QObject):
             self._last_position = current_pos
             print(f"Saved last position: {self._last_position}")
             
-            # Check if current_track exists before accessing its duration
-            if self.current_track:
-                track_duration = self.current_track.duration / 1000.0  # Duration in seconds
-                print(f"Track duration: {track_duration}")
-                if self.auto_play:
-                    if current_pos >= track_duration - 1 or current_pos == 0:  # Some bugs hadled here
-                        print("Track is nearing its end or no position report, playing next track...")
-                        if not self.play_next_track():
-                            print("No more tracks to play.")
-                        else:
-                            print("Next track started.")
+            if self.auto_play:
+                if not self.play_next_track():
+                    print("No more tracks to play.")
+                else:
+                    print("Next track started.")
             else:
                 print("No current track available.")
                 
