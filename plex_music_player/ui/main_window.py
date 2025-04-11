@@ -1,4 +1,5 @@
 import sys
+import time
 
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -10,6 +11,7 @@ from PyQt6.QtWidgets import (
     QListWidget,
     QSlider,
     QDialog,
+    QProgressBar,
 )
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot
@@ -25,6 +27,10 @@ class MainWindow(QMainWindow):
         self.player_thread = PlayerThread()
         self.player_thread.player_ready.connect(self.on_player_ready)
         self.player_thread.start()
+        
+        self.loading_tracks = False
+        self.tracks_to_load = 0
+        self.tracks_loaded = 0
 
         # Setup initial UI showing connection status
         self.setup_ui(show_connect_only=True)
@@ -38,6 +44,7 @@ class MainWindow(QMainWindow):
         self.player.playback_state_changed.connect(self._on_playback_state_changed)
         self.player.track_changed.connect(self.update_playback_ui)
         self.player.track_changed.connect(self.update_playlist_selection)
+        self.player.tracks_batch_loaded.connect(self.on_tracks_batch_loaded)
         
         # Attempt auto-connect using saved configuration
         try:
@@ -297,6 +304,17 @@ class MainWindow(QMainWindow):
                 font-size: 12px;
                 color: #888888;
             }
+            #loading_progress {
+                background-color: #2d2d2d;
+                border: none;
+                border-radius: 3px;
+                height: 2px;
+                margin: 0px;
+                text-align: center;
+            }
+            #loading_progress::chunk {
+                background-color: #0078d4;
+            }
         """)
 
         # Set object names for special styling
@@ -511,17 +529,42 @@ class MainWindow(QMainWindow):
     def play_from_playlist(self, item) -> None:
         """Play track from playlist on double click."""
         try:
+            print("DEBUG: Starting play_from_playlist")
             index = self.playlist_list.row(item)
+            print(f"DEBUG: Selected index: {index}")
+            
             if 0 <= index < len(self.player.playlist):
+                print(f"DEBUG: Index valid, current playlist length: {len(self.player.playlist)}")
+                print(f"DEBUG: Current player state: {self.player._player.playbackState() if self.player._player else 'No player'}")
+                
+                # Stop current playback first
+                if self.player._player:
+                    print("DEBUG: Stopping current playback")
+                    self.player._player.stop()
+                    # Wait for the player to actually stop
+                    time.sleep(0.1)  # Small delay to ensure stop completes
+                    print(f"DEBUG: Player state after stop: {self.player._player.playbackState()}")
+                
+                # Set current track and index
+                print(f"DEBUG: Setting new track index to {index}")
                 self.player.current_playlist_index = index
                 self.player.current_track = self.player.playlist[index]
+                print(f"DEBUG: New track set: {self.player.current_track.title if self.player.current_track else 'None'}")
+                
+                # Play the track
+                print("DEBUG: Attempting to play track")
                 if self.player._play_track_impl():
+                    print("DEBUG: Track started successfully")
                     self.update_playback_ui()
                     self.play_button.setEnabled(True)
                     self.prev_button.setEnabled(True)
                     self.next_button.setEnabled(True)
+                else:
+                    print("DEBUG: Failed to start track playback")
         except Exception as e:
-            print(f"Error playing from playlist: {e}")
+            print(f"ERROR in play_from_playlist: {e}")
+            import traceback
+            print(f"Stack trace: {traceback.format_exc()}")
 
     def shuffle_playlist(self) -> None:
         """Shuffle the playlist."""
@@ -538,7 +581,7 @@ class MainWindow(QMainWindow):
         self.progress_slider.setEnabled(is_playing)
 
     def add_to_playlist(self, track) -> None:
-        """Add a track to the playlist."""
+        """Add a track to the playlist"""
         self.player.add_to_playlist(track)
         year = f" ({track.year})" if hasattr(track, 'year') and track.year else ""
         self.playlist_list.addItem(f"{track.title}{year} - {track.grandparentTitle} [{track.parentTitle}]")
@@ -553,9 +596,7 @@ class MainWindow(QMainWindow):
         self.player.save_playlist()
 
     def add_tracks_batch(self, tracks):
-        """Batch add tracks to the playlist."""
-        if not tracks:
-            return
+        """Add multiple tracks to the playlist at once"""
         self.player.add_tracks_batch(tracks)
         items = []
         for track in tracks:
@@ -603,3 +644,26 @@ class MainWindow(QMainWindow):
                 color: #666666;
             }
         """
+
+    @pyqtSlot(list)
+    def on_tracks_batch_loaded(self, tracks):
+        """Handle batch of tracks loaded"""
+        self.update_playlist_ui(tracks)
+
+    def update_playlist_ui(self, tracks):
+        """Update playlist UI with new tracks"""
+        for track in tracks:
+            year = f" ({track.year})" if hasattr(track, 'year') and track.year else ""
+            item_text = f"{track.title}{year} - {track.grandparentTitle} [{track.parentTitle}]"
+            self.playlist_list.addItem(item_text)
+        
+        print(f"New playlist list count: {self.playlist_list.count()}")
+        
+        # Enable controls if this is the first track
+        if len(self.player.playlist) == len(tracks):
+            self.play_button.setEnabled(True)
+            self.prev_button.setEnabled(True)
+            self.next_button.setEnabled(True)
+        
+        # Force update of the list widget
+        self.playlist_list.update()

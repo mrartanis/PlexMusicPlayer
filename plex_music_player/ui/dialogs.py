@@ -14,7 +14,8 @@ from PyQt6.QtWidgets import (
 from plexapi.server import PlexServer
 from plexapi.audio import Track
 from plexapi.exceptions import Unauthorized, NotFound
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
+from ..models.player import TrackLoader, ArtistLoader
 
 class ConnectionDialog(QDialog):
     def __init__(self, parent=None):
@@ -283,31 +284,23 @@ class AddTracksDialog(QDialog):
 
     def add_artist_to_playlist(self, item):
         """Adds all tracks from the artist to the playlist"""
-        artist_index = self.artists_list.row(item)
-        artist = self.player.artists[artist_index]
-        
         try:
-            # Collect all tracks at once
-            all_tracks = []
-            albums = artist.albums()
-            for album in albums:
-                all_tracks.extend(album.tracks())
-            
-            # Update UI at once
-            self.parent().add_tracks_batch(all_tracks)
+            artist_index = self.artists_list.row(item)
+            artist = self.player.artists[artist_index]
+            self.player.start_artist_tracks_loading(artist)
+            self.accept()  # Close dialog after initiating loading
         except Exception as e:
-            print(f"Error adding artist tracks: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to add artist: {str(e)}")
 
     def add_album_to_playlist(self, item):
         """Adds all tracks from the album to the playlist"""
-        album_index = self.albums_list.row(item)
-        album = self.player.albums[album_index]
-        
         try:
-            tracks = album.tracks()
-            self.parent().add_tracks_batch(tracks)
+            album_index = self.albums_list.row(item)
+            album = self.player.albums[album_index]
+            self.player.start_album_tracks_loading(album)
+            self.accept()  # Close dialog after initiating loading
         except Exception as e:
-            print(f"Error adding album tracks: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to add album: {str(e)}")
 
     def add_track_to_playlist(self, item):
         """Adds a single track to the playlist"""
@@ -316,28 +309,49 @@ class AddTracksDialog(QDialog):
         self.parent().add_to_playlist(track)
 
     def add_all_artists(self):
-        """Adds all artists to the playlist"""
+        """Add all artists from Plex server"""
         try:
-            all_tracks = []
-            for artist in self.player.artists:
-                albums = artist.albums()
-                for album in albums:
-                    all_tracks.extend(album.tracks())
-            self.parent().add_tracks_batch(all_tracks)
-            self.accept()  # Close dialog after successful addition
+            # Disable UI elements
+            self.refresh_button.setEnabled(False)
+            self.artists_list.setEnabled(False)
+            self.albums_list.setEnabled(False)
+            
+            # Get all artists directly from player
+            artists = self.player.artists
+            if not artists:
+                QMessageBox.critical(self, "Error", "No artists found in the library")
+                self._enable_ui()
+                return
+                
+            # Start track loading for each artist sequentially
+            for artist in artists:
+                self.player.start_artist_tracks_loading(artist, stop_previous=False)
+                
+            # Close dialog after initiating loading for all artists
+            self.accept()
+            
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to add all artists: {str(e)}")
+            QMessageBox.critical(self, "Error", f"Failed to load artists: {str(e)}")
+            self._enable_ui()
+
+    def _enable_ui(self):
+        """Enable UI elements"""
+        self.refresh_button.setEnabled(True)
+        self.artists_list.setEnabled(True)
+        self.albums_list.setEnabled(True)
 
     def add_all_albums(self):
         """Adds all albums from the current artist to the playlist"""
         try:
             if not self.albums_list.count():
                 return
-            all_tracks = []
+            tracks_batch = []
             for i in range(self.albums_list.count()):
                 album = self.player.albums[i]
-                all_tracks.extend(album.tracks())
-            self.parent().add_tracks_batch(all_tracks)
+                tracks_batch.extend(album.tracks())
+            if tracks_batch:
+                for track in tracks_batch:
+                    self.player.add_to_playlist(track)
             self.accept()  # Close dialog after successful addition
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to add all albums: {str(e)}")
@@ -347,10 +361,27 @@ class AddTracksDialog(QDialog):
         try:
             if not self.tracks_list.count():
                 return
-            all_tracks = []
-            for i in range(self.tracks_list.count()):
-                all_tracks.append(self.player.tracks[i])
-            self.parent().add_tracks_batch(all_tracks)
+            tracks_batch = [self.player.tracks[i] for i in range(self.tracks_list.count())]
+            if tracks_batch:
+                for track in tracks_batch:
+                    self.player.add_to_playlist(track)
             self.accept()  # Close dialog after successful addition
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to add all tracks: {str(e)}") 
+            QMessageBox.critical(self, "Error", f"Failed to add all tracks: {str(e)}")
+
+    def _add_remaining_tracks(self):
+        """Add any remaining tracks in the batch"""
+        try:
+            if self.tracks_batch:
+                print(f"Adding remaining {len(self.tracks_batch)} tracks to playlist")
+                # Add tracks in larger batches for background loading
+                batch_size = 100
+                for i in range(0, len(self.tracks_batch), batch_size):
+                    current_batch = self.tracks_batch[i:i + batch_size]
+                    print(f"Adding remaining batch {i//batch_size + 1}")
+                    self.player.add_tracks_batch_async(current_batch)
+                
+                print("All remaining tracks have been sent to player")
+                self.tracks_batch = []
+        except Exception as e:
+            print(f"Error adding remaining tracks: {str(e)}") 
