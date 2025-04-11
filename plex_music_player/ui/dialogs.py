@@ -336,6 +336,7 @@ class AddTracksDialog(QDialog):
                 for album in albums:
                     all_tracks.extend(album.tracks())
             self.parent().add_tracks_batch(all_tracks)
+            self.accept()  # Close dialog after successful addition
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to add all artists: {str(e)}")
 
@@ -349,6 +350,7 @@ class AddTracksDialog(QDialog):
                 album = self.player.albums[i]
                 all_tracks.extend(album.tracks())
             self.parent().add_tracks_batch(all_tracks)
+            self.accept()  # Close dialog after successful addition
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to add all albums: {str(e)}")
 
@@ -361,5 +363,6 @@ class AddTracksDialog(QDialog):
             for i in range(self.tracks_list.count()):
                 all_tracks.append(self.player.tracks[i])
             self.parent().add_tracks_batch(all_tracks)
+            self.accept()  # Close dialog after successful addition
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to add all tracks: {str(e)}") 
