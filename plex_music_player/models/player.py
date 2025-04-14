@@ -319,6 +319,9 @@ class Player(QObject):
     tracks_batch_loaded = pyqtSignal(list)  # New signal for batch track loading
     connection_error = pyqtSignal(str)  # New signal for connection errors
     connection_restored = pyqtSignal()  # New signal for connection restoration
+    player_ready = pyqtSignal()  # Signal emitted when player is ready for playback
+    playback_started = pyqtSignal()  # Signal emitted when playback actually starts
+    playback_failed = pyqtSignal(str)  # Signal emitted when playback fails
     
     def __init__(self):
         super().__init__()
@@ -353,6 +356,13 @@ class Player(QObject):
         self._connection_check_timer = None
         self._last_connection_check = 0
         self._is_reconnecting = False
+        
+        # Playback state tracking
+        self._playback_start_timer = QTimer()
+        self._playback_start_timer.setSingleShot(True)
+        self._playback_start_timer.timeout.connect(self._check_playback_start)
+        self._playback_attempts = 0
+        self._max_playback_attempts = 3
 
     @pyqtSlot()
     def initialize_player(self) -> None:
@@ -368,7 +378,9 @@ class Player(QObject):
         self._player.durationChanged.connect(self._on_duration_changed)
         self._player.playbackStateChanged.connect(self._on_playback_state_changed)
         self._player.errorOccurred.connect(self._on_error_occurred)
+        self._player.mediaStatusChanged.connect(self._on_media_status_changed)
         print("Player initialized in thread:", QThread.currentThread())
+        self.player_ready.emit()
 
     @pyqtSlot(str, str)
     def connect_server(self, url: str, token: str) -> None:
@@ -405,9 +417,7 @@ class Player(QObject):
                     'url': None,
                     'token': None
                 },
-                'current_playlist_index': -1,
-                'auto_play': True,
-                'playlist': []
+                'auto_play': True
             }
             
             # Create config directory if it doesn't exist
@@ -451,11 +461,29 @@ class Player(QObject):
                                         )
                                         self.playlist.append(track)
                                 
-                                # Set current playlist index
-                                if 'current_playlist_index' in config:
-                                    self.current_playlist_index = config['current_playlist_index']
-                                    if 0 <= self.current_playlist_index < len(self.playlist):
-                                        self.current_track = self.playlist[self.current_playlist_index]
+                                # Safely restore playlist index
+                                if 'playlist_index' in config:
+                                    saved_index = config['playlist_index']
+                                    saved_track_key = config.get('playlist_index_track_key')
+                                    
+                                    # Validate saved index
+                                    if (isinstance(saved_index, int) and 
+                                        0 <= saved_index < len(self.playlist)):
+                                        # If we have a track key, verify it matches
+                                        if saved_track_key:
+                                            track = self.playlist[saved_index]
+                                            if (hasattr(track, 'ratingKey') and 
+                                                track.ratingKey == saved_track_key):
+                                                self.current_playlist_index = saved_index
+                                                self.current_track = track
+                                        else:
+                                            # No track key to verify, just set the index
+                                            self.current_playlist_index = saved_index
+                                            self.current_track = self.playlist[saved_index]
+                                    else:
+                                        # Invalid index, reset to beginning
+                                        self.current_playlist_index = 0 if self.playlist else -1
+                                        self.current_track = self.playlist[0] if self.playlist else None
                             
                             # Set auto-play state
                             if 'auto_play' in config:
@@ -690,6 +718,15 @@ class Player(QObject):
         print(f"[toggle_play] New position: {self._player.position()}")
         QTimer.singleShot(100, self._update_media_center)
 
+    @pyqtSlot()
+    def stop(self) -> None:
+        """Stop playback and reset player state."""
+        self._player.stop()
+        self.current_track = None
+        self.current_playlist_index = -1
+        self.playback_state_changed.emit(False)
+        self.track_changed.emit()
+
     @pyqtSlot(int)
     def seek_position(self, position: int) -> None:
         """Seek to the specified position."""
@@ -715,8 +752,22 @@ class Player(QObject):
 
     @pyqtSlot(object)
     def add_to_playlist(self, track: Track) -> None:
-        """Add a track to the playlist."""
-        self.playlist.append(track)
+        """Add a track to the playlist"""
+        self._playlist_lock.lock()
+        try:
+            # Check if track already exists
+            track_exists = any(
+                existing_track.ratingKey == track.ratingKey 
+                for existing_track in self.playlist
+            )
+            
+            if not track_exists:
+                self.playlist.append(track)
+                # Emit signal for UI update with a list containing the single track
+                self.tracks_batch_loaded.emit([track])
+                self.save_playlist()
+        finally:
+            self._playlist_lock.unlock()
 
     @pyqtSlot()
     def clear_playlist(self) -> None:
@@ -973,8 +1024,6 @@ class Player(QObject):
             if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
                 print("DEBUG: Stopping current playback")
                 self._player.stop()
-                # Wait for the player to actually stop
-                time.sleep(0.1)  # Small delay to ensure stop completes
                 print(f"DEBUG: Player state after stop: {self._player.playbackState()}")
             
             # Ensure we have a valid current track
@@ -994,60 +1043,24 @@ class Player(QObject):
                 
             print(f"DEBUG: Got stream URL: {stream_url}")
             
-            # Try to play the track with multiple attempts
-            max_attempts = 3
-            for attempt in range(max_attempts):
-                try:
-                    print(f"\nDEBUG: === Playback attempt {attempt + 1} of {max_attempts} ===")
-                    
-                    # If this is not the first attempt, recreate the player
-                    if attempt > 0:
-                        self._recreate_player()
-                        if self._player is None:
-                            print("ERROR: Player recreation failed")
-                            return False
-                    
-                    print(f"DEBUG: Current player state: {self._player.playbackState()}")
-                    
-                    # Create QUrl and set source
-                    qurl = QUrl(stream_url)
-                    print(f"DEBUG: Created QUrl: {qurl.toString()}")
-                    
-                    # Clear any existing source first
-                    self._player.setSource(QUrl())
-                    time.sleep(0.1)  # Small delay after clearing source
-                    
-                    # Set new source
-                    self._player.setSource(qurl)
-                    print("DEBUG: Source set")
-                    
-                    # Start playback
-                    print("DEBUG: Starting playback...")
-                    self._player.play()
-                    print(f"DEBUG: Player state after play: {self._player.playbackState()}")
-                    
-                    # Wait a short time to see if playback starts successfully
-                    time.sleep(0.2)  # Increased delay to better check state
-                    print(f"DEBUG: Player state after delay: {self._player.playbackState()}")
-                    
-                    if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-                        print("DEBUG: Playback confirmed successful")
-                        break
-                    else:
-                        print("WARNING: Playback did not start immediately")
-                        time.sleep(0.5)  # Additional delay for playback to start
-                        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-                            print("DEBUG: Playback started after additional delay")
-                            break
-                        
-                except Exception as e:
-                    print(f"ERROR on attempt {attempt + 1}: {e}")
-                    if attempt < max_attempts - 1:
-                        print("DEBUG: Waiting before retry...")
-                        time.sleep(1)
-                    else:
-                        print("ERROR: All playback attempts failed")
-                        return False
+            # Create QUrl and set source
+            qurl = QUrl(stream_url)
+            print(f"DEBUG: Created QUrl: {qurl.toString()}")
+            
+            # Clear any existing source first
+            self._player.setSource(QUrl())
+            
+            # Set new source
+            self._player.setSource(qurl)
+            print("DEBUG: Source set")
+            
+            # Start playback
+            print("DEBUG: Starting playback...")
+            self._player.play()
+            print(f"DEBUG: Player state after play: {self._player.playbackState()}")
+            
+            # Start checking if playback actually starts
+            self._start_playback_start_check()
             
             print("DEBUG: === _play_track_impl completed successfully ===\n")
             return True
@@ -1069,10 +1082,18 @@ class Player(QObject):
                 'url': self.plex._baseurl if self.plex else None,
                 'token': self.plex._token if self.plex else None
             },
-            'current_playlist_index': self.current_playlist_index,
             'auto_play': self.auto_play
         }
         print(f"DEBUG: Basic config data: {config_data}")
+        
+        # Safely save playlist index
+        if self.playlist and self.current_playlist_index >= 0:
+            if self.current_playlist_index < len(self.playlist):
+                config_data['playlist_index'] = self.current_playlist_index
+                # Save the rating key of the track at this index for validation during load
+                track = self.playlist[self.current_playlist_index]
+                if hasattr(track, 'ratingKey'):
+                    config_data['playlist_index_track_key'] = track.ratingKey
         
         # Save current track info if available
         if self.current_track:
@@ -1369,14 +1390,29 @@ class Player(QObject):
             
         self._playlist_lock.lock()
         try:
-            # Add tracks to playlist
-            self.playlist.extend(tracks)
+            # Filter out tracks that already exist in the playlist
+            existing_rating_keys = {track.ratingKey for track in self.playlist}
+            new_tracks = [
+                track for track in tracks 
+                if track.ratingKey not in existing_rating_keys
+            ]
             
-            # Emit signal for UI update
-            self.tracks_batch_loaded.emit(tracks)
-            
-            # Save playlist after adding tracks
-            self.save_playlist()
+            if new_tracks:
+                # Add only new tracks to playlist
+                self.playlist.extend(new_tracks)
+                
+                # Emit signal for UI update
+                self.tracks_batch_loaded.emit(new_tracks)
+                
+                # If this is the first track being added, update UI
+                if len(self.playlist) == len(new_tracks):
+                    self.current_playlist_index = 0
+                    self.current_track = self.playlist[0]
+                    self.track_changed.emit()
+                    QTimer.singleShot(120, self._update_media_center)
+                
+                # Save playlist after adding tracks
+                self.save_playlist()
         finally:
             self._playlist_lock.unlock()
 
@@ -1501,11 +1537,15 @@ class Player(QObject):
     def _handle_first_track(self, track: object) -> None:
         """Handle first track loaded when playlist is empty"""
         if not self.playlist:
-            self.add_to_playlist(track)
+            self.add_to_playlist(track)  # This will emit tracks_batch_loaded
             self.current_playlist_index = 0
             self.current_track = track
+            # Emit track_changed signal before starting playback to update UI
+            self.track_changed.emit()
+            # Update media center info
+            QTimer.singleShot(120, self._update_media_center)
+            # Start playback
             if self._play_track_impl():
-                self.track_changed.emit()
                 QTimer.singleShot(120, self._update_media_center)
 
     def _check_connection(self) -> bool:
@@ -1568,6 +1608,45 @@ class Player(QObject):
         if self._connection_check_timer:
             self._connection_check_timer.stop()
             self._connection_check_timer = None
+
+    def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
+        """Handle media status changes."""
+        print(f"Media status changed to: {status}")
+        if status == QMediaPlayer.MediaStatus.LoadedMedia:
+            print("Media loaded successfully")
+            self._playback_attempts = 0
+            self._start_playback_start_check()
+        elif status == QMediaPlayer.MediaStatus.InvalidMedia:
+            print("Invalid media")
+            self.playback_failed.emit("Invalid media format")
+        elif status == QMediaPlayer.MediaStatus.NoMedia:
+            print("No media loaded")
+            self.playback_failed.emit("No media loaded")
+
+    def _start_playback_start_check(self) -> None:
+        """Start checking if playback has actually started."""
+        self._playback_start_timer.start(1000)  # Check after 1 second
+
+    def _check_playback_start(self) -> None:
+        """Check if playback has started and handle accordingly."""
+        if not self._player:
+            return
+
+        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            print("Playback confirmed started")
+            self.playback_started.emit()
+            return
+
+        print("Playback not started yet")
+        self._playback_attempts += 1
+        
+        if self._playback_attempts < self._max_playback_attempts:
+            print(f"Retrying playback (attempt {self._playback_attempts + 1})")
+            self._recreate_player()
+            self._start_playback_start_check()
+        else:
+            print("Max playback attempts reached")
+            self.playback_failed.emit("Failed to start playback after multiple attempts")
 
 class PlayerThread(QThread):
     player_ready = pyqtSignal(object)  # Signal to notify that the player is ready

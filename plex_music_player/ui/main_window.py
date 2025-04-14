@@ -170,6 +170,13 @@ class MainWindow(QMainWindow):
         self.clear_button.setStyleSheet(self.get_button_style())
         self.clear_button.clicked.connect(self.clear_playlist)
         playlist_header.addWidget(self.clear_button)
+
+        self.scroll_to_current_button = QPushButton("⌖")
+        self.scroll_to_current_button.setFixedSize(30, 30)
+        self.scroll_to_current_button.setStyleSheet(self.get_button_style())
+        self.scroll_to_current_button.setToolTip("Прокрутить к текущему треку")
+        self.scroll_to_current_button.clicked.connect(self.scroll_to_current_track)
+        playlist_header.addWidget(self.scroll_to_current_button)
         
         playlist_layout.addLayout(playlist_header)
         
@@ -356,7 +363,7 @@ class MainWindow(QMainWindow):
                 background-color: #3d3d3d;
             }
         """
-        for btn in [self.add_button, self.shuffle_button, self.remove_button, self.clear_button]:
+        for btn in [self.add_button, self.shuffle_button, self.remove_button, self.clear_button, self.scroll_to_current_button]:
             btn.setStyleSheet(playlist_buttons_style)
             btn.setFixedSize(24, 24)
 
@@ -373,6 +380,12 @@ class MainWindow(QMainWindow):
                 year = f" ({track.year})" if hasattr(track, 'year') and track.year else ""
                 self.playlist_list.addItem(f"{track.title}{year} - {track.grandparentTitle} [{track.parentTitle}]")
             self.update_playlist_selection()
+            
+            # Schedule scrolling to current track after UI is fully initialized
+            if self.player.playlist and self.player.current_playlist_index >= 0:
+                if self.player.current_playlist_index < len(self.player.playlist):
+                    QTimer.singleShot(100, self.scroll_to_current_track)
+            
             self.play_button.setEnabled(True)
             self.prev_button.setEnabled(True)
             self.next_button.setEnabled(True)
@@ -423,15 +436,36 @@ class MainWindow(QMainWindow):
     def toggle_play(self) -> None:
         """Toggle play/pause state. If no track is loaded but a playlist exists,
         start playing the first track and update the UI (including loading the cover)."""
+        print(f"[toggle_play] Current state: {self.player._player.playbackState() if self.player._player else 'No player'}")
+        print(f"[toggle_play] Current track: {self.player.current_track.title if self.player.current_track else 'None'}")
+        print(f"[toggle_play] Current index: {self.player.current_playlist_index}")
+        
         if not self.player.current_track and self.player.playlist:
-            # If no current track but playlist exists, start with the first track
-            self.player.current_playlist_index = 0
-            self.player.current_track = self.player.playlist[0]
+            print("[toggle_play] No current track but playlist exists")
+            # If no current track but playlist exists, use saved index or start with the first track
+            if self.player.current_playlist_index >= 0 and self.player.current_playlist_index < len(self.player.playlist):
+                print(f"[toggle_play] Using saved index: {self.player.current_playlist_index}")
+                self.player.current_track = self.player.playlist[self.player.current_playlist_index]
+            else:
+                print("[toggle_play] Using first track")
+                self.player.current_playlist_index = 0
+                self.player.current_track = self.player.playlist[0]
+            
+            # Stop any existing playback first
+            if self.player._player:
+                print("[toggle_play] Stopping existing playback")
+                self.player._player.stop()
+                time.sleep(0.1)  # Small delay to ensure stop completes
+            
+            print("[toggle_play] Starting new playback")
             if not self.player._play_track_impl():
+                print("[toggle_play] Failed to start playback")
                 return
         else:
             # If track is already loaded, just toggle play/pause
+            print("[toggle_play] Toggling existing playback")
             self.player.toggle_play()
+        
         self.update_playback_ui()
 
 
@@ -514,8 +548,7 @@ class MainWindow(QMainWindow):
         # If the currently playing track is being removed, stop playback safely
         if self.player.current_track and self.player.current_playlist_index in indices:
             self.player.stop()  # Stop playback safely
-            self.player.current_track = None
-            self.play_button.setText("▶")
+            self.update_play_button(False)
             self.progress_slider.setValue(0)
             self.time_label.setText("00:00 / 00:00")
             self.track_info.setText("No track")
@@ -597,20 +630,30 @@ class MainWindow(QMainWindow):
 
     def add_tracks_batch(self, tracks):
         """Add multiple tracks to the playlist at once"""
+        # Check if this is the first batch of tracks
+        is_first_batch = len(self.player.playlist) == 0
+        
+        # Add tracks to the playlist
         self.player.add_tracks_batch(tracks)
+        
+        # Update UI
         items = []
         for track in tracks:
             year = f" ({track.year})" if hasattr(track, 'year') and track.year else ""
             items.append(f"{track.title}{year} - {track.grandparentTitle} [{track.parentTitle}]")
         self.playlist_list.addItems(items)
-        if len(self.player.playlist) == len(tracks):
+        
+        # If this is the first batch, set up playback
+        if is_first_batch and tracks:
             self.player.current_playlist_index = 0
             self.player.current_track = tracks[0]
+            self.update_playback_ui()
+            self.play_button.setEnabled(True)
+            self.prev_button.setEnabled(True)
+            self.next_button.setEnabled(True)
             if self.player._play_track_impl():
                 self.update_playback_ui()
-                self.play_button.setEnabled(True)
-                self.prev_button.setEnabled(True)
-                self.next_button.setEnabled(True)
+        
         self.player.save_playlist()
 
     def closeEvent(self, event) -> None:
@@ -628,27 +671,45 @@ class MainWindow(QMainWindow):
         self.player._audio_output.setVolume(value / 100.0)
     
     def get_button_style(self) -> str:
+        """Return the style for playlist control buttons."""
         return """
             QPushButton {
-                background-color: #0078d4;
+                background-color: #2d2d2d;
                 border: none;
-                border-radius: 15px;
+                border-radius: 12px;
                 color: white;
-                font-size: 14px;
+                font-size: 12px;
+                padding: 0px;
             }
             QPushButton:hover {
-                background-color: #1e8ae6;
+                background-color: #3d3d3d;
             }
             QPushButton:disabled {
                 background-color: #2d2d2d;
                 color: #666666;
+            }
+            QPushButton:pressed {
+                background-color: #222222;
             }
         """
 
     @pyqtSlot(list)
     def on_tracks_batch_loaded(self, tracks):
         """Handle batch of tracks loaded"""
+        # Update playlist UI
         self.update_playlist_ui(tracks)
+        
+        # Check if this is the first batch of tracks
+        if len(self.player.playlist) == len(tracks) and tracks:
+            # This is the first batch, set up playback
+            self.player.current_playlist_index = 0
+            self.player.current_track = tracks[0]
+            self.update_playback_ui()
+            self.play_button.setEnabled(True)
+            self.prev_button.setEnabled(True)
+            self.next_button.setEnabled(True)
+            if self.player._play_track_impl():
+                self.update_playback_ui()
 
     def update_playlist_ui(self, tracks):
         """Update playlist UI with new tracks"""
@@ -667,3 +728,13 @@ class MainWindow(QMainWindow):
         
         # Force update of the list widget
         self.playlist_list.update()
+
+    def scroll_to_current_track(self) -> None:
+        """Scroll to the current track in the playlist."""
+        try:
+            if self.player.current_track and self.player.current_playlist_index >= 0:
+                current_item = self.playlist_list.item(self.player.current_playlist_index)
+                if current_item:
+                    self.playlist_list.scrollToItem(current_item)
+        except Exception as e:
+            print(f"Error scrolling to current track: {e}")
