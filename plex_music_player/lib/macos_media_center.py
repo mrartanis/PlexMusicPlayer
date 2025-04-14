@@ -128,14 +128,24 @@ if sys.platform == 'darwin':
                 # Set album artwork if available
                 if hasattr(track, 'thumb') and track.thumb:
                     try:
+                        print(f"DEBUG: Track thumb URL: {track.thumb}")
                         response = track._server.url(track.thumb)
+                        # Add token to URL
+                        response = f"{response}?X-Plex-Token={track._server._token}"
+                        print(f"DEBUG: Full cover URL: {response}")
                         image_data = track._server._session.get(response).content
+                        print(f"DEBUG: Image data size: {len(image_data)} bytes")
                         image = NSImage.alloc().initWithData_(image_data)
                         if image:
+                            print("DEBUG: Successfully created NSImage")
                             artwork = MediaPlayer.MPMediaItemArtwork.alloc().initWithImage_(image)
                             info.setObject_forKey_(artwork, MediaPlayer.MPMediaItemPropertyArtwork)
+                        else:
+                            print("DEBUG: Failed to create NSImage from data")
                     except Exception as e:
                         print(f"Error setting album artwork: {e}")
+                        print(f"DEBUG: Exception type: {type(e).__name__}")
+                        print(f"DEBUG: Full exception details: {repr(e)}")
                 
                 # Update Now Playing info
                 MediaPlayer.MPNowPlayingInfoCenter.defaultCenter().setNowPlayingInfo_(info)
