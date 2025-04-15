@@ -616,8 +616,6 @@ class MainWindow(QMainWindow):
     def add_to_playlist(self, track) -> None:
         """Add a track to the playlist"""
         self.player.add_to_playlist(track)
-        year = f" ({track.year})" if hasattr(track, 'year') and track.year else ""
-        self.playlist_list.addItem(f"{track.title}{year} - {track.grandparentTitle} [{track.parentTitle}]")
         if len(self.player.playlist) == 1:
             self.player.current_playlist_index = 0
             self.player.current_track = track
