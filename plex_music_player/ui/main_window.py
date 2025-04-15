@@ -197,7 +197,7 @@ class MainWindow(QMainWindow):
         # Progress slider
         self.progress_slider = QSlider(Qt.Orientation.Horizontal)
         self.progress_slider.setEnabled(False)
-        self.progress_slider.sliderMoved.connect(self.seek_position)
+        self.progress_slider.sliderReleased.connect(lambda: self.seek_position(self.progress_slider.value()))
         controls_layout.addWidget(self.progress_slider)
 
         # Time label
