@@ -16,6 +16,9 @@ from plexapi.audio import Track
 from plexapi.exceptions import Unauthorized, NotFound
 from PyQt6.QtCore import Qt, QTimer
 from ..models.player import TrackLoader, ArtistLoader
+from ..lib.logger import Logger
+
+logger = Logger()
 
 class ConnectionDialog(QDialog):
     def __init__(self, parent=None):
@@ -33,7 +36,7 @@ class ConnectionDialog(QDialog):
                         self.url_edit.setText(config['plex']['url'])
                         self.token_edit.setText(config['plex']['token'])
         except Exception as e:
-            print(f"Error loading credentials: {e}")
+            logger.error(f"Error loading credentials: {e}")
 
     def setup_ui(self):
         self.setWindowTitle("Connect to Plex")
@@ -370,18 +373,18 @@ class AddTracksDialog(QDialog):
             QMessageBox.critical(self, "Error", f"Failed to add all tracks: {str(e)}")
 
     def _add_remaining_tracks(self):
-        """Add any remaining tracks in the batch"""
+        """Add remaining tracks to the playlist."""
         try:
             if self.tracks_batch:
-                print(f"Adding remaining {len(self.tracks_batch)} tracks to playlist")
+                logger.debug(f"Adding remaining {len(self.tracks_batch)} tracks to playlist")
                 # Add tracks in larger batches for background loading
                 batch_size = 100
                 for i in range(0, len(self.tracks_batch), batch_size):
                     current_batch = self.tracks_batch[i:i + batch_size]
-                    print(f"Adding remaining batch {i//batch_size + 1}")
+                    logger.debug(f"Adding remaining batch {i//batch_size + 1}")
                     self.player.add_tracks_batch_async(current_batch)
                 
-                print("All remaining tracks have been sent to player")
+                logger.debug("All remaining tracks have been sent to player")
                 self.tracks_batch = []
         except Exception as e:
-            print(f"Error adding remaining tracks: {str(e)}") 
+            logger.error(f"Error adding remaining tracks: {str(e)}") 

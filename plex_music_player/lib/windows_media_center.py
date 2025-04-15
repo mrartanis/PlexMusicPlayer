@@ -2,6 +2,9 @@ import sys
 from typing import Any, Callable
 from plexapi.audio import Track
 from plex_music_player.lib.media_center import MediaCenterInterface
+from plex_music_player.lib.logger import Logger
+
+logger = Logger()
 
 if sys.platform == 'win32':
     import win32com.client
@@ -24,11 +27,11 @@ if sys.platform == 'win32':
             self.player = None
             self._hook = None
             self._hook_proc = None  # Keep a reference to prevent garbage collection
-            print("WindowsMediaCenter initialized")
+            logger.debug("WindowsMediaCenter initialized")
             
         def initialize(self) -> None:
             """Initialize the Windows media center integration."""
-            print("Initializing Windows media center...")
+            logger.debug("Initializing Windows media center...")
             
             # Create the callback function
             def low_level_keyboard_handler(nCode: int, wParam: int, lParam: POINTER(c_void_p)) -> int:
@@ -37,26 +40,26 @@ if sys.platform == 'win32':
                     if nCode >= 0 and wParam == win32con.WM_KEYDOWN:
                         kb_struct = cast(lParam, POINTER(c_void_p))
                         vk_code = kb_struct[0]
-                        print(f"Key pressed: {hex(vk_code)}")
+                        logger.debug(f"Key pressed: {hex(vk_code)}")
                         
                         if vk_code == VK_MEDIA_PLAY_PAUSE:
-                            print("Play/Pause key detected")
+                            logger.debug("Play/Pause key detected")
                             if self.player:
                                 self.player.toggle_play()
                         elif vk_code == VK_MEDIA_NEXT_TRACK:
-                            print("Next Track key detected")
+                            logger.debug("Next Track key detected")
                             if self.player:
                                 self.player.play_next_track()
                         elif vk_code == VK_MEDIA_PREV_TRACK:
-                            print("Previous Track key detected")
+                            logger.debug("Previous Track key detected")
                             if self.player:
                                 self.player.play_previous_track()
                         elif vk_code == VK_MEDIA_STOP:
-                            print("Stop key detected")
+                            logger.debug("Stop key detected")
                             if self.player:
                                 self.player.stop()
                 except Exception as e:
-                    print(f"Error in keyboard handler: {e}")
+                    logger.error(f"Error in keyboard handler: {e}")
                 
                 # Call the next hook
                 return windll.user32.CallNextHookEx(self._hook, nCode, wParam, lParam)
@@ -78,52 +81,52 @@ if sys.platform == 'win32':
             )
             
             if self._hook:
-                print("Successfully registered keyboard hook")
+                logger.debug("Successfully registered keyboard hook")
             else:
                 error = win32api.GetLastError()
-                print(f"Failed to register keyboard hook. Error: {error}")
+                logger.error(f"Failed to register keyboard hook. Error: {error}")
             
-        def update_now_playing(self, track: Track, is_playing: bool, position: int) -> None:
+        def update_now_playing(self, track: Track, is_playing: bool, position: int, update_position_only: bool = False) -> None:
             """Update the now playing information in Windows media center."""
             pass
                 
         def clear_now_playing(self) -> None:
             """Clear the now playing information from Windows media center."""
             if not self.player:
-                print("DEBUG: Player not set, skipping clear_now_playing")
+                logger.debug("Player not set, skipping clear_now_playing")
                 return
                 
             try:
-                print("DEBUG: Creating Windows Media Player object...")
+                logger.debug("Creating Windows Media Player object...")
                 # Create Windows Media Player object
                 wmp = win32com.client.Dispatch("WMPlayer.OCX")
-                print("DEBUG: WMP object created successfully")
+                logger.debug("WMP object created successfully")
                 
-                print("DEBUG: Stopping playback...")
+                logger.debug("Stopping playback...")
                 wmp.controls.stop()
-                print("DEBUG: Playback stopped")
+                logger.debug("Playback stopped")
                 
-                print("DEBUG: Clearing current media...")
+                logger.debug("Clearing current media...")
                 wmp.currentMedia = None
-                print("DEBUG: Current media cleared")
+                logger.debug("Current media cleared")
                 
-                print("DEBUG: Media information cleared successfully")
+                logger.debug("Media information cleared successfully")
                 
             except Exception as e:
-                print(f"DEBUG: Error in clear_now_playing:")
-                print(f"DEBUG: Exception type: {type(e).__name__}")
-                print(f"DEBUG: Exception message: {str(e)}")
-                print(f"DEBUG: Full exception details: {repr(e)}")
+                logger.error(f"Error in clear_now_playing:")
+                logger.error(f"Exception type: {type(e).__name__}")
+                logger.error(f"Exception message: {str(e)}")
+                logger.error(f"Full exception details: {repr(e)}")
                 # Still silently continue after logging the error
                 pass
                 
         def set_player(self, player: Any) -> None:
             """Set the player instance that will handle media control commands."""
             self.player = player
-            print("Player set in WindowsMediaCenter")
+            logger.debug("Player set in WindowsMediaCenter")
             
         def __del__(self):
             """Clean up the keyboard hook when the object is destroyed."""
             if self._hook:
-                print("Unregistering keyboard hook...")
+                logger.debug("Unregistering keyboard hook...")
                 windll.user32.UnhookWindowsHookEx(self._hook) 

@@ -4,6 +4,9 @@ from plexapi.audio import Track
 from plex_music_player.lib.media_center import MediaCenterInterface
 from PyQt6.QtCore import QObject
 from plex_music_player.models.player import Player
+from plex_music_player.lib.logger import Logger
+
+logger = Logger()
 
 if sys.platform == 'darwin':
     from Foundation import NSObject, NSMutableDictionary, NSTimer
@@ -106,7 +109,7 @@ if sys.platform == 'darwin':
                     self.update_now_playing(track, is_playing, position)
                     
             except Exception as e:
-                print(f"Error updating media center: {e}")
+                logger.error(f"Error updating media center: {e}")
                 
         @objc.python_method
         def update_now_playing(self, track: Track, is_playing: bool, position: int) -> None:
@@ -128,30 +131,30 @@ if sys.platform == 'darwin':
                 # Set album artwork if available
                 if hasattr(track, 'thumb') and track.thumb:
                     try:
-                        print(f"DEBUG: Track thumb URL: {track.thumb}")
+                        logger.debug(f"Track thumb URL: {track.thumb}")
                         response = track._server.url(track.thumb)
                         # Add token to URL
                         response = f"{response}?X-Plex-Token={track._server._token}"
-                        print(f"DEBUG: Full cover URL: {response}")
+                        logger.debug(f"Full cover URL: {response}")
                         image_data = track._server._session.get(response).content
-                        print(f"DEBUG: Image data size: {len(image_data)} bytes")
+                        logger.debug(f"Image data size: {len(image_data)} bytes")
                         image = NSImage.alloc().initWithData_(image_data)
                         if image:
-                            print("DEBUG: Successfully created NSImage")
+                            logger.debug("Successfully created NSImage")
                             artwork = MediaPlayer.MPMediaItemArtwork.alloc().initWithImage_(image)
                             info.setObject_forKey_(artwork, MediaPlayer.MPMediaItemPropertyArtwork)
                         else:
-                            print("DEBUG: Failed to create NSImage from data")
+                            logger.debug("Failed to create NSImage from data")
                     except Exception as e:
-                        print(f"Error setting album artwork: {e}")
-                        print(f"DEBUG: Exception type: {type(e).__name__}")
-                        print(f"DEBUG: Full exception details: {repr(e)}")
+                        logger.error(f"Error setting album artwork: {e}")
+                        logger.error(f"Exception type: {type(e).__name__}")
+                        logger.error(f"Full exception details: {repr(e)}")
                 
                 # Update Now Playing info
                 MediaPlayer.MPNowPlayingInfoCenter.defaultCenter().setNowPlayingInfo_(info)
                 
             except Exception as e:
-                print(f"Error updating Now Playing info: {e}")
+                logger.error(f"Error updating Now Playing info: {e}")
                 
         @objc.python_method
         def clear_now_playing(self) -> None:
@@ -159,7 +162,7 @@ if sys.platform == 'darwin':
             try:
                 MediaPlayer.MPNowPlayingInfoCenter.defaultCenter().setNowPlayingInfo_(None)
             except Exception as e:
-                print(f"Error clearing Now Playing info: {e}")
+                logger.error(f"Error clearing Now Playing info: {e}")
 
 class MacOSMediaCenter(MediaCenterInterface):
     """Media center integration for macOS."""

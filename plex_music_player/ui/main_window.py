@@ -18,7 +18,9 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSlot
 from plex_music_player.models.player import PlayerThread
 from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog
 from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image, pyintaller_resource_path
+from plex_music_player.lib.logger import Logger
 
+logger = Logger()
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
@@ -60,7 +62,7 @@ class MainWindow(QMainWindow):
                 self.status_label.setText("Could not connect.\nPlease press 'Connect to Plex'.")
                 self.connect_button.show()
         except Exception as e:
-            print(f"Error during auto-connect: {e}")
+            logger.error(f"Error during auto-connect: {e}")
             self.status_label.setText("Error connecting.\nPlease press 'Connect to Plex'.")
             self.connect_button.show()
 
@@ -436,34 +438,34 @@ class MainWindow(QMainWindow):
     def toggle_play(self) -> None:
         """Toggle play/pause state. If no track is loaded but a playlist exists,
         start playing the first track and update the UI (including loading the cover)."""
-        print(f"[toggle_play] Current state: {self.player._player.playbackState() if self.player._player else 'No player'}")
-        print(f"[toggle_play] Current track: {self.player.current_track.title if self.player.current_track else 'None'}")
-        print(f"[toggle_play] Current index: {self.player.current_playlist_index}")
+        logger.debug(f"Current state: {self.player._player.playbackState() if self.player._player else 'No player'}")
+        logger.debug(f"Current track: {self.player.current_track.title if self.player.current_track else 'None'}")
+        logger.debug(f"Current index: {self.player.current_playlist_index}")
         
         if not self.player.current_track and self.player.playlist:
-            print("[toggle_play] No current track but playlist exists")
+            logger.debug("No current track but playlist exists")
             # If no current track but playlist exists, use saved index or start with the first track
             if self.player.current_playlist_index >= 0 and self.player.current_playlist_index < len(self.player.playlist):
-                print(f"[toggle_play] Using saved index: {self.player.current_playlist_index}")
+                logger.debug(f"Using saved index: {self.player.current_playlist_index}")
                 self.player.current_track = self.player.playlist[self.player.current_playlist_index]
             else:
-                print("[toggle_play] Using first track")
+                logger.debug("Using first track")
                 self.player.current_playlist_index = 0
                 self.player.current_track = self.player.playlist[0]
             
             # Stop any existing playback first
             if self.player._player:
-                print("[toggle_play] Stopping existing playback")
+                logger.debug("Stopping existing playback")
                 self.player._player.stop()
                 time.sleep(0.1)  # Small delay to ensure stop completes
             
-            print("[toggle_play] Starting new playback")
+            logger.debug("Starting new playback")
             if not self.player._play_track_impl():
-                print("[toggle_play] Failed to start playback")
+                logger.error("Failed to start playback")
                 return
         else:
             # If track is already loaded, just toggle play/pause
-            print("[toggle_play] Toggling existing playback")
+            logger.debug("Toggling existing playback")
             self.player.toggle_play()
         
         self.update_playback_ui()
@@ -480,7 +482,7 @@ class MainWindow(QMainWindow):
             self.progress_slider.setValue(current_pos)
             self.update_time_label(current_pos, self.player.current_track.duration)
             if current_pos >= self.player.current_track.duration:
-                print("Track ended, playing next track...")
+                logger.info("Track ended, playing next track...")
                 self.play_next_track()
         else:
             if self.player.current_track and self.progress_slider.value() >= self.player.current_track.duration:
@@ -515,7 +517,7 @@ class MainWindow(QMainWindow):
                     current_item.setSelected(True)
                     self.playlist_list.scrollToItem(current_item)
         except Exception as e:
-            print(f"Error updating selection: {e}")
+            logger.error(f"Error updating selection: {e}")
 
     def clear_playlist(self) -> None:
         """Clear the playlist and safely pause playback if necessary."""
@@ -562,42 +564,42 @@ class MainWindow(QMainWindow):
     def play_from_playlist(self, item) -> None:
         """Play track from playlist on double click."""
         try:
-            print("DEBUG: Starting play_from_playlist")
+            logger.debug("Starting play_from_playlist")
             index = self.playlist_list.row(item)
-            print(f"DEBUG: Selected index: {index}")
+            logger.debug(f"Selected index: {index}")
             
             if 0 <= index < len(self.player.playlist):
-                print(f"DEBUG: Index valid, current playlist length: {len(self.player.playlist)}")
-                print(f"DEBUG: Current player state: {self.player._player.playbackState() if self.player._player else 'No player'}")
+                logger.debug(f"Index valid, current playlist length: {len(self.player.playlist)}")
+                logger.debug(f"Current player state: {self.player._player.playbackState() if self.player._player else 'No player'}")
                 
                 # Stop current playback first
                 if self.player._player:
-                    print("DEBUG: Stopping current playback")
+                    logger.debug("Stopping current playback")
                     self.player._player.stop()
                     # Wait for the player to actually stop
                     time.sleep(0.1)  # Small delay to ensure stop completes
-                    print(f"DEBUG: Player state after stop: {self.player._player.playbackState()}")
+                    logger.debug(f"Player state after stop: {self.player._player.playbackState()}")
                 
                 # Set current track and index
-                print(f"DEBUG: Setting new track index to {index}")
+                logger.debug(f"Setting new track index to {index}")
                 self.player.current_playlist_index = index
                 self.player.current_track = self.player.playlist[index]
-                print(f"DEBUG: New track set: {self.player.current_track.title if self.player.current_track else 'None'}")
+                logger.debug(f"New track set: {self.player.current_track.title if self.player.current_track else 'None'}")
                 
                 # Play the track
-                print("DEBUG: Attempting to play track")
+                logger.debug("Attempting to play track")
                 if self.player._play_track_impl():
-                    print("DEBUG: Track started successfully")
+                    logger.debug("Track started successfully")
                     self.update_playback_ui()
                     self.play_button.setEnabled(True)
                     self.prev_button.setEnabled(True)
                     self.next_button.setEnabled(True)
                 else:
-                    print("DEBUG: Failed to start track playback")
+                    logger.error("Failed to start track playback")
         except Exception as e:
-            print(f"ERROR in play_from_playlist: {e}")
+            logger.error(f"Error in play_from_playlist: {e}")
             import traceback
-            print(f"Stack trace: {traceback.format_exc()}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
 
     def shuffle_playlist(self) -> None:
         """Shuffle the playlist."""
@@ -716,7 +718,7 @@ class MainWindow(QMainWindow):
             item_text = f"{track.title}{year} - {track.grandparentTitle} [{track.parentTitle}]"
             self.playlist_list.addItem(item_text)
         
-        print(f"New playlist list count: {self.playlist_list.count()}")
+        logger.debug(f"New playlist list count: {self.playlist_list.count()}")
         
         # Enable controls if this is the first track
         if len(self.player.playlist) == len(tracks):
@@ -735,4 +737,4 @@ class MainWindow(QMainWindow):
                 if current_item:
                     self.playlist_list.scrollToItem(current_item)
         except Exception as e:
-            print(f"Error scrolling to current track: {e}")
+            logger.error(f"Error scrolling to current track: {e}")

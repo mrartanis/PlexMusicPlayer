@@ -1,7 +1,9 @@
 import os
 import json
 import time
-from typing import Optional, List, Any
+import traceback
+import requests
+from typing import Optional, List, Dict, Any
 from plexapi.server import PlexServer
 from plexapi.audio import Track, Album, Artist
 from PyQt6.QtCore import (
@@ -10,10 +12,12 @@ from PyQt6.QtCore import (
 )
 from PyQt6.QtCore import Qt as QtCore
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
-import requests
 import random
 import sys
 from plex_music_player.lib.media_center import get_media_center
+from plex_music_player.lib.logger import Logger
+
+logger = Logger()
 
 # Constants for error handling
 MAX_RETRY_ATTEMPTS = 3
@@ -75,32 +79,32 @@ class SavedTrack:
                 
                 # Get the base URL directly from the server
                 base_url = self._server.url(media_key)
-                print(f"DEBUG: Base URL: {base_url}")
+                logger.debug(f"DEBUG: Base URL: {base_url}")
                 
                 # Add verify=False to handle SSL certificate issues
                 try:
                     # First try with SSL verification
                     url = f"{base_url}?download=1&X-Plex-Token={token}"
-                    print(f"DEBUG: Trying URL with SSL verification: {url}")
+                    logger.debug(f"DEBUG: Trying URL with SSL verification: {url}")
                     response = requests.head(url, verify=True, timeout=5)
                     if response.status_code == 200:
-                        print(f"DEBUG: URL with SSL verification successful")
+                        logger.debug(f"DEBUG: URL with SSL verification successful")
                         return url
                 except requests.exceptions.SSLError:
-                    print("SSL verification failed, trying without verification...")
+                    logger.debug("SSL verification failed, trying without verification...")
                     # If SSL verification fails, try without it
                     url = f"{base_url}?download=1&X-Plex-Token={token}"
-                    print(f"DEBUG: Trying URL without SSL verification: {url}")
+                    logger.debug(f"DEBUG: Trying URL without SSL verification: {url}")
                     response = requests.head(url, verify=False, timeout=5)
                     if response.status_code == 200:
-                        print(f"DEBUG: URL without SSL verification successful")
+                        logger.debug(f"DEBUG: URL without SSL verification successful")
                         return url
                         
                 return None
                 
             return None
         except Exception as e:
-            print(f"Error in getStreamURL: {e}")
+            logger.error(f"Error in getStreamURL: {e}")
             return None
 
 class TrackLoader(QThread):
@@ -124,12 +128,12 @@ class TrackLoader(QThread):
         self.should_stop = False
         self.total_tracks = 0
         self.loaded_tracks = 0
-        print(f"TrackLoader initialized for {load_type}: {plex_object.title}")
+        logger.debug(f"TrackLoader initialized for {load_type}: {plex_object.title}")
 
     def stop(self):
         """Stop the loading process"""
         self.should_stop = True
-        print(f"TrackLoader stopped for {self.plex_object.title}")
+        logger.debug(f"TrackLoader stopped for {self.plex_object.title}")
 
     def _update_progress(self, current: int, total: int):
         """Update loading progress"""
@@ -221,12 +225,12 @@ class ArtistLoader(QThread):
         self.total_artists = 0
         self.loaded_artists = 0
         self.artists = []
-        print("ArtistLoader initialized")
+        logger.debug("ArtistLoader initialized")
 
     def stop(self):
         """Stop the loading process"""
         self.should_stop = True
-        print("ArtistLoader stopped")
+        logger.debug("ArtistLoader stopped")
 
     def _update_progress(self, current: int, total: int):
         """Update loading progress"""
@@ -236,21 +240,21 @@ class ArtistLoader(QThread):
 
     def run(self):
         try:
-            print("Loading artists from Plex server")
+            logger.debug("Loading artists from Plex server")
             # Get all artists from the library
             self.artists = self.plex_server.library.search(libtype="artist")
             total_artists = len(self.artists)
-            print(f"Found {total_artists} artists")
+            logger.debug(f"Found {total_artists} artists")
             
             if total_artists == 0:
-                print("No artists found")
+                logger.debug("No artists found")
                 self.error_occurred.emit("No artists found in the library")
                 return
             
             # Process artists in batches
             for i in range(0, total_artists, self.batch_size):
                 if self.should_stop:
-                    print("Loading stopped")
+                    logger.debug("Loading stopped")
                     break
                 
                 # Get the current batch of artists
@@ -262,22 +266,22 @@ class ArtistLoader(QThread):
                         break
                     
                     try:
-                        print(f"Loading artist: {artist.title}")
+                        logger.debug(f"Loading artist: {artist.title}")
                         # Emit the artist
                         self.artist_loaded.emit(artist)
                         self._update_progress(i + batch.index(artist) + 1, total_artists)
                     except Exception as artist_error:
-                        print(f"Error loading artist {artist.title}: {str(artist_error)}")
+                        logger.error(f"Error loading artist {artist.title}: {str(artist_error)}")
                         self.error_occurred.emit(f"Error loading artist {artist.title}: {str(artist_error)}")
                 
                 # Small delay to prevent UI freezing
                 self.msleep(10)
             
         except Exception as e:
-            print(f"Error in ArtistLoader: {str(e)}")
+            logger.error(f"Error in ArtistLoader: {str(e)}")
             self.error_occurred.emit(str(e))
         finally:
-            print("ArtistLoader finished")
+            logger.debug("ArtistLoader finished")
             self.finished.emit()
 
 class PlaylistUpdater(QThread):
@@ -364,6 +368,8 @@ class Player(QObject):
         self._playback_attempts = 0
         self._max_playback_attempts = 3
 
+        logger.debug("Player initialized in thread: " + str(QThread.currentThread()))
+
     @pyqtSlot()
     def initialize_player(self) -> None:
         """
@@ -379,27 +385,26 @@ class Player(QObject):
         self._player.playbackStateChanged.connect(self._on_playback_state_changed)
         self._player.errorOccurred.connect(self._on_error_occurred)
         self._player.mediaStatusChanged.connect(self._on_media_status_changed)
-        print("Player initialized in thread:", QThread.currentThread())
+        logger.debug("Player initialized in thread: " + str(QThread.currentThread()))
         self.player_ready.emit()
 
     @pyqtSlot(str, str)
-    def connect_server(self, url: str, token: str) -> None:
+    def connect_server(self, url: str, token: str) -> bool:
         """Connect to Plex server."""
         try:
-            # Connect to Plex server with proper SSL verification
             self.plex = PlexServer(url, token)
             # Test connection
             self.plex.library.search("", limit=1)
                 
             # Start connection checking after successful connection
             self._start_connection_check()
-            print("Successfully connected to Plex server")
+            logger.debug("Successfully connected to Plex server")
         except requests.exceptions.SSLError as e:
-            print(f"SSL verification error: {e}")
+            logger.error(f"SSL verification error: {e}")
             self.connection_error.emit("SSL verification failed. Please check your server's SSL certificate.")
             raise
         except Exception as e:
-            print(f"Error connecting to Plex server: {e}")
+            logger.error(f"Error connecting to Plex server: {e}")
             self.connection_error.emit(f"Failed to connect to Plex server: {str(e)}")
             raise
 
@@ -407,9 +412,9 @@ class Player(QObject):
     def load_config(self) -> Optional[dict]:
         """Load configuration from file and attempt to connect."""
         try:
-            print("DEBUG: Starting load_config() method")
+            logger.debug("Starting load_config() method")
             config_path = os.path.expanduser("~/.config/plex_music_player/config.json")
-            print(f"DEBUG: Config path: {config_path}")
+            logger.debug(f"Config path: {config_path}")
             
             # Create default config
             default_config = {
@@ -424,29 +429,29 @@ class Player(QObject):
             os.makedirs(os.path.dirname(config_path), exist_ok=True)
             
             if not os.path.exists(config_path):
-                print("DEBUG: Config file does not exist, creating new one")
+                logger.debug("Config file does not exist, creating new one")
                 with open(config_path, "w") as f:
                     json.dump(default_config, f)
                 return default_config
             
             try:
                 with open(config_path, "r") as f:
-                    print("DEBUG: Reading config file")
+                    logger.debug("Reading config file")
                     content = f.read()
-                    print(f"DEBUG: Config file content: {content}")
+                    logger.debug(f"Config file content: {content}")
                     config = json.loads(content)
-                    print(f"DEBUG: Parsed config: {config}")
+                    logger.debug(f"Parsed config: {config}")
                     
                     if 'plex' in config:
-                        print("DEBUG: Plex config found")
+                        logger.debug("Plex config found")
                         plex_config = config['plex']
                         if plex_config['url'] and plex_config['token']:
-                            print(f"DEBUG: Connecting to Plex server: {plex_config['url']}")
+                            logger.debug(f"Connecting to Plex server: {plex_config['url']}")
                             self.connect_server(plex_config['url'], plex_config['token'])
                             
                             # Load playlist if available
                             if 'playlist' in config and config['playlist']:
-                                print(f"DEBUG: Loading playlist with {len(config['playlist'])} tracks")
+                                logger.debug(f"Loading playlist with {len(config['playlist'])} tracks")
                                 self.playlist.clear()
                                 for track_data in config['playlist']:
                                     if 'title' in track_data and 'rating_key' in track_data:
@@ -491,25 +496,24 @@ class Player(QObject):
                             
                             return config
             except json.JSONDecodeError as e:
-                print(f"DEBUG: JSON decode error: {e}")
-                print(f"DEBUG: Error position: line {e.lineno}, column {e.colno}, char {e.pos}")
+                logger.error(f"JSON decode error: {e}")
+                logger.error(f"Error position: line {e.lineno}, column {e.colno}, char {e.pos}")
                 # Try to read the file again to see the problematic content
                 with open(config_path, "r") as f:
                     content = f.read()
-                    print(f"DEBUG: Problematic content around error: {content[max(0, e.pos-20):min(len(content), e.pos+20)]}")
+                    logger.error(f"Problematic content around error: {content[max(0, e.pos-20):min(len(content), e.pos+20)]}")
                 # Create a new config file with default values
-                print("DEBUG: Creating new config file with default values")
+                logger.debug("Creating new config file with default values")
                 with open(config_path, "w") as f:
                     json.dump(default_config, f)
-                print("DEBUG: New config file created")
+                logger.debug("New config file created")
                 return default_config
                 
         except Exception as e:
-            print(f"Error loading configuration: {e}")
-            print(f"DEBUG: Exception type: {type(e)}")
-            print(f"DEBUG: Exception details: {str(e)}")
-            import traceback
-            print(f"DEBUG: Traceback: {traceback.format_exc()}")
+            logger.error(f"Error loading configuration: {e}")
+            logger.error(f"Exception type: {type(e)}")
+            logger.error(f"Exception details: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
         return None
 
     @pyqtSlot(result=list)
@@ -560,14 +564,14 @@ class Player(QObject):
             
         for attempt in range(MAX_RETRY_ATTEMPTS):
             try:
-                print(f"DEBUG: Attempting to get stream URL (attempt {attempt + 1})")
+                logger.debug(f"Attempting to get stream URL (attempt {attempt + 1})")
                 url = self.current_track.getStreamURL()
                 if url:
-                    print(f"DEBUG: Stream URL obtained: {url}")
+                    logger.debug(f"Stream URL obtained: {url}")
                     return url
                 raise ConnectionError("Failed to get stream URL")
             except Exception as e:
-                print(f"Error getting stream URL (attempt {attempt + 1}): {e}")
+                logger.error(f"Error getting stream URL (attempt {attempt + 1}): {e}")
                 if attempt < MAX_RETRY_ATTEMPTS - 1:
                     time.sleep(RETRY_DELAY)
                     if not self._check_connection():
@@ -578,32 +582,32 @@ class Player(QObject):
 
     def _on_playback_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
         """Handle playback state changes safely."""
-        print(f"State changed to: {state}")
-        print(f"Current position: {self._player.position() if self._player else 'No player'}")
+        logger.debug(f"State changed to: {state}")
+        logger.debug(f"Current position: {self._player.position() if self._player else 'No player'}")
         
         if state == QMediaPlayer.PlaybackState.StoppedState:
             current_pos = self.get_current_position()
-            print(f"Current position on stop: {current_pos}")
+            logger.debug(f"Current position on stop: {current_pos}")
             # Save position before stopping
             self._last_position = current_pos
-            print(f"Saved last position: {self._last_position}")
+            logger.debug(f"Saved last position: {self._last_position}")
             
             # Check if this was an error stop
             error = self._player.error()
             if error != QMediaPlayer.Error.NoError:
                 error_string = self._player.errorString()
-                print(f"Playback stopped due to error: {error_string}")
+                logger.error(f"Playback stopped due to error: {error_string}")
                 
                 # Check if this is an SSL error
                 if "TLS/SSL" in error_string or "SSL" in error_string:
-                    print("SSL error detected, will retry playback")
+                    logger.debug("SSL error detected, will retry playback")
                     # Don't move to next track, let the retry mechanism handle it
                     return
                 
                 # For other errors, try to refresh track info and retry
                 if self.plex and self.current_track:
                     try:
-                        print("Error occurred, refreshing track information...")
+                        logger.debug("Error occurred, refreshing track information...")
                         refreshed_track = self.plex.fetchItem(self.current_track.ratingKey)
                         if refreshed_track:
                             if isinstance(self.current_track, SavedTrack):
@@ -615,19 +619,19 @@ class Player(QObject):
                             self._play_track_impl()
                             return
                     except Exception as refresh_error:
-                        print(f"Recovery attempt failed: {refresh_error}")
+                        logger.error(f"Recovery attempt failed: {refresh_error}")
             
             # Only auto-play next track if this wasn't an error stop
             if self.auto_play:
                 if not self.play_next_track():
-                    print("No more tracks to play.")
+                    logger.debug("No more tracks to play.")
                 else:
-                    print("Next track started.")
+                    logger.debug("Next track started.")
             else:
-                print("No current track available.")
+                logger.debug("No current track available.")
                 
         is_playing = state == QMediaPlayer.PlaybackState.PlayingState
-        print(f"Player state: {'Playing' if is_playing else 'Paused/Stopped'}")
+        logger.debug(f"Player state: {'Playing' if is_playing else 'Paused/Stopped'}")
         self.playback_state_changed.emit(is_playing)
         QTimer.singleShot(100, self._update_media_center)
 
@@ -645,36 +649,36 @@ class Player(QObject):
 
     def _on_error_occurred(self, error: QMediaPlayer.Error, error_string: str) -> None:
         """Handle media player errors."""
-        print(f"Media player error: {error}, {error_string}")
+        logger.error(f"Media player error: {error}, {error_string}")
         if error != QMediaPlayer.Error.NoError:
             if error == QMediaPlayer.Error.NetworkError:
-                print("Network error occurred, attempting to recover...")
+                logger.debug("Network error occurred, attempting to recover...")
                 if self._retry_connection():
                     # If connection is restored, try to refresh track info and retry
                     if isinstance(self.current_track, SavedTrack):
                         try:
-                            print("Refreshing track information after network error...")
+                            logger.debug("Refreshing track information after network error...")
                             refreshed_track = self.plex.fetchItem(self.current_track.ratingKey)
                             if refreshed_track:
                                 self.current_track.media = refreshed_track.media
                                 self.current_track._server = self.plex
                         except Exception as e:
-                            print(f"Error refreshing track info after network error: {e}")
+                            logger.error(f"Error refreshing track info after network error: {e}")
                     # Retry playing the current track
                     self._play_track_impl()
                 else:
                     # If reconnection failed, try next track
                     self.play_next_track()
             elif error == QMediaPlayer.Error.FormatError:
-                print("Format error occurred, skipping track...")
+                logger.debug("Format error occurred, skipping track...")
                 self.play_next_track()
             elif "TLS/SSL" in error_string or "SSL" in error_string:
-                print("SSL error occurred, will retry playback")
+                logger.debug("SSL error occurred, will retry playback")
                 # Don't move to next track, let the retry mechanism handle it
                 # Try to refresh track info and retry
                 if self.plex and self.current_track:
                     try:
-                        print("Refreshing track information after SSL error...")
+                        logger.debug("Refreshing track information after SSL error...")
                         refreshed_track = self.plex.fetchItem(self.current_track.ratingKey)
                         if refreshed_track:
                             if isinstance(self.current_track, SavedTrack):
@@ -685,38 +689,39 @@ class Player(QObject):
                             # Try playing again with refreshed information
                             self._play_track_impl()
                     except Exception as e:
-                        print(f"Error refreshing track info after SSL error: {e}")
+                        logger.error(f"Error refreshing track info after SSL error: {e}")
             else:
-                print(f"An error occurred during playback: {error_string}")
+                logger.error(f"An error occurred during playback: {error_string}")
                 self.connection_error.emit(f"Playback error: {error_string}")
 
     @pyqtSlot()
-    def toggle_play(self) -> None:
+    def toggle_play(self) -> bool:
         """Toggle play/pause state."""
         if self._player is None:
-            print("Player not initialized!")
-            return
+            logger.error("Player not initialized!")
+            return False
             
-        print(f"[toggle_play] Current state: {self._player.playbackState()}")
-        print(f"[toggle_play] Current position: {self._player.position()}")
+        logger.debug(f"[toggle_play] Current state: {self._player.playbackState()}")
+        logger.debug(f"[toggle_play] Current position: {self._player.position()}")
         
         if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            print("[toggle_play] Pausing playback...")
+            logger.debug("[toggle_play] Pausing playback...")
             self._player.pause()
             self.playback_state_changed.emit(False)
         else:
-            print("[toggle_play] Starting playback...")
+            logger.debug("[toggle_play] Starting playback...")
             if self._player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
-                print("[toggle_play] Player was stopped, seeking to last position...")
+                logger.debug("[toggle_play] Player was stopped, seeking to last position...")
                 last_pos = self._last_position
-                print(f"[toggle_play] Last position was: {last_pos}")
+                logger.debug(f"[toggle_play] Last position was: {last_pos}")
                 self._player.setPosition(self._last_position or 0)
             self._player.play()
             self.playback_state_changed.emit(True)
             
-        print(f"[toggle_play] New state: {self._player.playbackState()}")
-        print(f"[toggle_play] New position: {self._player.position()}")
+        logger.debug(f"[toggle_play] New state: {self._player.playbackState()}")
+        logger.debug(f"[toggle_play] New position: {self._player.position()}")
         QTimer.singleShot(100, self._update_media_center)
+        return True
 
     @pyqtSlot()
     def stop(self) -> None:
@@ -731,7 +736,7 @@ class Player(QObject):
     def seek_position(self, position: int) -> None:
         """Seek to the specified position."""
         if self._player is None:
-            print("Player not initialized!")
+            logger.error("Player not initialized!")
             return
         self._player.setPosition(position)
         self._update_media_center()
@@ -784,7 +789,7 @@ class Player(QObject):
                 try:
                     self.media_center.clear_now_playing()
                 except Exception as e:
-                    print(f"Error clearing media center: {e}")
+                    logger.error(f"Error clearing media center: {e}")
 
     @pyqtSlot(list)
     def remove_from_playlist(self, indices: List[int]) -> None:
@@ -801,7 +806,7 @@ class Player(QObject):
                 try:
                     self.media_center.clear_now_playing()
                 except Exception as e:
-                    print(f"Error clearing media center: {e}")
+                    logger.error(f"Error clearing media center: {e}")
         elif self.current_playlist_index > 0:
             self.current_playlist_index -= len([i for i in indices if i < self.current_playlist_index])
 
@@ -840,7 +845,7 @@ class Player(QObject):
                             self.current_track.media = refreshed_track.media
                             self.current_track._server = self.plex
                 except Exception as e:
-                    print(f"Error refreshing track info after shuffle: {e}")
+                    logger.error(f"Error refreshing track info after shuffle: {e}")
                     # If we can't refresh the track, move to the next one
                     if len(self.playlist) > 1:
                         self.playlist.pop(0)
@@ -940,9 +945,9 @@ class Player(QObject):
             # Save configuration
             self.save_config()
             
-            print("Player closed successfully")
+            logger.debug("Player closed successfully")
         except Exception as e:
-            print(f"Error during player cleanup: {e}")
+            logger.error(f"Error during player cleanup: {e}")
 
     def _update_media_center(self) -> None:
         """Update media center information."""
@@ -962,11 +967,11 @@ class Player(QObject):
             )
         except Exception as e:
             # Log the error but continue silently
-            print(f"Error updating media center: {e}")
+            logger.error(f"Error updating media center: {e}")
 
-    def _recreate_player(self) -> None:
+    def _recreate_player(self) -> bool:
         """Recreate the player and audio output."""
-        print("DEBUG: Recreating player")
+        logger.debug("Recreating player")
         try:
             # First, disconnect all signals
             if self._player:
@@ -976,20 +981,20 @@ class Player(QObject):
                     self._player.playbackStateChanged.disconnect()
                     self._player.errorOccurred.disconnect()
                 except Exception as e:
-                    print(f"DEBUG: Error disconnecting signals: {e}")
+                    logger.error(f"DEBUG: Error disconnecting signals: {e}")
                 
                 try:
                     self._player.stop()
                     self._player.setSource(QUrl())  # Clear source
                     self._player.deleteLater()
                 except Exception as e:
-                    print(f"DEBUG: Error stopping old player: {e}")
+                    logger.error(f"DEBUG: Error stopping old player: {e}")
             
             if self._audio_output:
                 try:
                     self._audio_output.deleteLater()
                 except Exception as e:
-                    print(f"DEBUG: Error deleting old audio output: {e}")
+                    logger.error(f"DEBUG: Error deleting old audio output: {e}")
             
             # Wait for objects to be deleted
             QThread.msleep(100)
@@ -1005,76 +1010,76 @@ class Player(QObject):
             self._player.playbackStateChanged.connect(self._on_playback_state_changed)
             self._player.errorOccurred.connect(self._on_error_occurred)
             
-            print("DEBUG: Player recreated successfully")
+            logger.debug("Player recreated successfully")
+            return True
         except Exception as e:
-            print(f"ERROR in _recreate_player: {e}")
-            import traceback
-            print(f"Stack trace: {traceback.format_exc()}")
+            logger.error(f"ERROR in _recreate_player: {e}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            return False
 
     def _play_track_impl(self) -> bool:
         """Internal implementation of track playback."""
-        print("\nDEBUG: === Starting _play_track_impl ===")
+        logger.debug("\n === Starting _play_track_impl ===")
         if self._player is None:
-            print("ERROR: Player not initialized!")
+            logger.error("ERROR: Player not initialized!")
             return False
             
         try:
-            print(f"DEBUG: Current player state before stop: {self._player.playbackState()}")
+            logger.debug(f"Current player state before stop: {self._player.playbackState()}")
             # Stop any current playback
             if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-                print("DEBUG: Stopping current playback")
+                logger.debug("Stopping current playback")
                 self._player.stop()
-                print(f"DEBUG: Player state after stop: {self._player.playbackState()}")
+                logger.debug(f"Current player state after stop: {self._player.playbackState()}")
             
             # Ensure we have a valid current track
             if not self.current_track:
-                print("ERROR: No current track selected")
+                logger.error("ERROR: No current track selected")
                 return False
                 
-            print(f"DEBUG: Attempting to play track: {self.current_track.title}")
-            print(f"DEBUG: Track index: {self.current_playlist_index}")
+            logger.debug(f"Attempting to play track: {self.current_track.title}")
+            logger.debug(f"Track index: {self.current_playlist_index}")
             
             # Get stream URL with retry mechanism
             stream_url = self.get_stream_url()
             if not stream_url:
-                print("ERROR: Failed to get stream URL, skipping track...")
+                logger.error("ERROR: Failed to get stream URL, skipping track...")
                 self.play_next_track()
                 return False
                 
-            print(f"DEBUG: Got stream URL: {stream_url}")
+            logger.debug(f"Got stream URL: {stream_url}")
             
             # Create QUrl and set source
             qurl = QUrl(stream_url)
-            print(f"DEBUG: Created QUrl: {qurl.toString()}")
+            logger.debug(f"Created QUrl: {qurl.toString()}")
             
             # Clear any existing source first
             self._player.setSource(QUrl())
             
             # Set new source
             self._player.setSource(qurl)
-            print("DEBUG: Source set")
+            logger.debug("Source set")
             
             # Start playback
-            print("DEBUG: Starting playback...")
+            logger.debug("Starting playback...")
             self._player.play()
-            print(f"DEBUG: Player state after play: {self._player.playbackState()}")
+            logger.debug(f"Current player state after play: {self._player.playbackState()}")
             
             # Start checking if playback actually starts
             self._start_playback_start_check()
             
-            print("DEBUG: === _play_track_impl completed successfully ===\n")
+            logger.debug("\n_play_track_impl completed successfully")
             return True
             
         except Exception as e:
-            print(f"ERROR in _play_track_impl: {e}")
-            import traceback
-            print(f"Stack trace: {traceback.format_exc()}")
+            logger.error(f"ERROR in _play_track_impl: {e}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
             return False
 
     @pyqtSlot(result=dict)
     def config(self) -> dict:
         """Return the player configuration."""
-        print("DEBUG: Starting config() method")
+        logger.debug("Starting config() method")
         
         # Save only essential configuration data
         config_data = {
@@ -1084,7 +1089,7 @@ class Player(QObject):
             },
             'auto_play': self.auto_play
         }
-        print(f"DEBUG: Basic config data: {config_data}")
+        logger.debug(f"Basic config data: {config_data}")
         
         # Safely save playlist index
         if self.playlist and self.current_playlist_index >= 0:
@@ -1097,94 +1102,93 @@ class Player(QObject):
         
         # Save current track info if available
         if self.current_track:
-            print(f"DEBUG: Current track type: {type(self.current_track)}")
-            print(f"DEBUG: Current track attributes: {dir(self.current_track)}")
+            logger.debug(f"Current track type: {type(self.current_track)}")
+            logger.debug(f"Current track attributes: {dir(self.current_track)}")
             config_data['current_track'] = {
                 'title': self.current_track.title if hasattr(self.current_track, 'title') else None,
                 'rating_key': self.current_track.ratingKey if hasattr(self.current_track, 'ratingKey') else None
             }
-            print(f"DEBUG: Current track data: {config_data['current_track']}")
+            logger.debug(f"Current track data: {config_data['current_track']}")
             
         # Save current album info if available
         if self.current_album:
-            print(f"DEBUG: Current album type: {type(self.current_album)}")
-            print(f"DEBUG: Current album attributes: {dir(self.current_album)}")
+            logger.debug(f"Current album type: {type(self.current_album)}")
+            logger.debug(f"Current album attributes: {dir(self.current_album)}")
             config_data['current_album'] = {
                 'title': self.current_album.title if hasattr(self.current_album, 'title') else None,
                 'rating_key': self.current_album.ratingKey if hasattr(self.current_album, 'ratingKey') else None
             }
-            print(f"DEBUG: Current album data: {config_data['current_album']}")
+            logger.debug(f"Current album data: {config_data['current_album']}")
             
         # Save current artist info if available
         if self.current_artist:
-            print(f"DEBUG: Current artist type: {type(self.current_artist)}")
-            print(f"DEBUG: Current artist attributes: {dir(self.current_artist)}")
+            logger.debug(f"Current artist type: {type(self.current_artist)}")
+            logger.debug(f"Current artist attributes: {dir(self.current_artist)}")
             config_data['current_artist'] = {
                 'title': self.current_artist.title if hasattr(self.current_artist, 'title') else None,
                 'rating_key': self.current_artist.ratingKey if hasattr(self.current_artist, 'ratingKey') else None
             }
-            print(f"DEBUG: Current artist data: {config_data['current_artist']}")
+            logger.debug(f"Current artist data: {config_data['current_artist']}")
             
-        print(f"DEBUG: Final config data: {config_data}")
+        logger.debug(f"Final config data: {config_data}")
         return config_data
 
     @pyqtSlot()
     def save_config(self) -> None:
         """Save configuration to file."""
         try:
-            print("DEBUG: Starting save_config() method")
+            logger.debug("Starting save_config() method")
             config_dir = os.path.expanduser("~/.config/plex_music_player")
             os.makedirs(config_dir, exist_ok=True)
             config_path = os.path.join(config_dir, "config.json")
-            print(f"DEBUG: Config path: {config_path}")
+            logger.debug(f"Config path: {config_path}")
             
-            print("DEBUG: Getting config data")
+            logger.debug("Getting config data")
             config_data = self.config()
             
-            print("DEBUG: Attempting to serialize config data")
+            logger.debug("Attempting to serialize config data")
             try:
                 json_str = json.dumps(config_data)
-                print("DEBUG: Successfully serialized config data")
-                print(f"DEBUG: JSON string: {json_str}")
+                logger.debug("Successfully serialized config data")
+                logger.debug(f"JSON string: {json_str}")
             except TypeError as e:
-                print(f"DEBUG: JSON serialization error: {e}")
-                print(f"DEBUG: Error details: {str(e)}")
+                logger.error(f"JSON serialization error: {e}")
+                logger.error(f"Error details: {str(e)}")
                 # Try to identify the problematic key
                 for key, value in config_data.items():
                     try:
                         json.dumps({key: value})
                     except TypeError:
-                        print(f"DEBUG: Problem with key '{key}'")
+                        logger.error(f"Problem with key '{key}'")
                         if isinstance(value, dict):
                             for subkey, subvalue in value.items():
                                 try:
                                     json.dumps({subkey: subvalue})
                                 except TypeError:
-                                    print(f"DEBUG: Problem with subkey '{key}.{subkey}'")
-                                    print(f"DEBUG: Value type: {type(subvalue)}")
-                                    print(f"DEBUG: Value: {subvalue}")
+                                    logger.error(f"Problem with subkey '{key}.{subkey}'")
+                                    logger.error(f"Value type: {type(subvalue)}")
+                                    logger.error(f"Value: {subvalue}")
             
-            print("DEBUG: Writing config to file")
+            logger.debug("Writing config to file")
             with open(config_path, "w") as f:
                 json.dump(config_data, f)
-            print("DEBUG: Config saved successfully")
+            logger.debug("Config saved successfully")
             
             # Verify the saved file
-            print("DEBUG: Verifying saved config file")
+            logger.debug("Verifying saved config file")
             with open(config_path, "r") as f:
                 content = f.read()
-                print(f"DEBUG: Saved file content: {content}")
+                logger.debug(f"Saved file content: {content}")
                 try:
                     json.loads(content)
-                    print("DEBUG: Saved file is valid JSON")
+                    logger.debug("Saved file is valid JSON")
                 except json.JSONDecodeError as e:
-                    print(f"DEBUG: Saved file is not valid JSON: {e}")
+                    logger.error(f"Saved file is not valid JSON: {e}")
         except Exception as e:
-            print(f"Error saving configuration: {e}")
-            print(f"DEBUG: Exception type: {type(e)}")
-            print(f"DEBUG: Exception details: {str(e)}")
-            import traceback
-            print(f"DEBUG: Traceback: {traceback.format_exc()}")
+            logger.error(f"Error saving configuration: {e}")
+            logger.error(f"Exception type: {type(e)}")
+            logger.error(f"Exception details: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
     @pyqtSlot()
     def save_playlist(self) -> None:
@@ -1247,6 +1251,7 @@ class Player(QObject):
                                 container = m.container
                                 parts = m.parts
                                 
+                                
                             # Handle parts safely
                             parts_data = []
                             for p in parts:
@@ -1280,9 +1285,8 @@ class Player(QObject):
                     'current_index': self.current_playlist_index
                 }, f)
         except Exception as e:
-            print(f"Error saving playlist: {e}")
-            import traceback
-            print(f"Stack trace: {traceback.format_exc()}")
+            logger.error(f"Error saving playlist: {e}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
 
     @pyqtSlot()
     def load_playlist(self) -> None:
@@ -1300,7 +1304,7 @@ class Player(QObject):
                 
             # Check basic data structure
             if not isinstance(data, dict) or 'playlist' not in data:
-                print("Invalid playlist format: missing 'playlist' field or invalid structure")
+                logger.error("Invalid playlist format: missing 'playlist' field or invalid structure")
                 os.remove(playlist_path)
                 return
                 
@@ -1309,7 +1313,7 @@ class Player(QObject):
             
             # Check if playlist is a list
             if not isinstance(data['playlist'], list):
-                print("Invalid playlist format: 'playlist' is not a list")
+                logger.error("Invalid playlist format: 'playlist' is not a list")
                 os.remove(playlist_path)
                 return
                 
@@ -1317,14 +1321,14 @@ class Player(QObject):
             for track_data in data['playlist']:
                 # Check if track_data is a dictionary
                 if not isinstance(track_data, dict):
-                    print("Invalid track format: track data is not a dictionary")
+                    logger.error("Invalid track format: track data is not a dictionary")
                     os.remove(playlist_path)
                     return
                     
                 # Check for required fields
                 required_fields = ['title', 'artist', 'album', 'key', 'ratingKey']
                 if not all(field in track_data for field in required_fields):
-                    print("Invalid track format: missing required fields")
+                    logger.error("Invalid track format: missing required fields")
                     os.remove(playlist_path)
                     return
                     
@@ -1352,7 +1356,7 @@ class Player(QObject):
                         
                     self.playlist.append(track)
                 except (ValueError, TypeError) as e:
-                    print(f"Error converting track data: {e}")
+                    logger.error(f"Error converting track data: {e}")
                     os.remove(playlist_path)
                     return
             
@@ -1371,10 +1375,10 @@ class Player(QObject):
             self.playback_state_changed.emit(True)
             
         except json.JSONDecodeError:
-            print("Invalid playlist file: not a valid JSON")
+            logger.error("Invalid playlist file: not a valid JSON")
             os.remove(playlist_path)
         except Exception as e:
-            print(f"Error loading playlist: {e}")
+            logger.error(f"Error loading playlist: {e}")
             # In case of error, clear playlist and remove file
             self.playlist.clear()
             self.current_playlist_index = -1
@@ -1454,10 +1458,10 @@ class Player(QObject):
         """Update playback progress."""
         if self.is_playing() and self.current_track:
             current_pos = self.get_current_position()
-            print(f"Current position: {current_pos}")
-            print(f"Player state: {self._player.playbackState() if self._player else 'Not initialized'}")
+            logger.debug(f"Current position: {current_pos}")
+            logger.debug(f"Player state: {self._player.playbackState() if self._player else 'Not initialized'}")
             if current_pos >= self.current_track.duration:
-                print("Track ended, playing next track...")
+                logger.debug("Track ended, playing next track...")
                 self.play_next_track()
         else:
             pass
@@ -1477,10 +1481,10 @@ class Player(QObject):
             if response.status_code == 200:
                 return int(response.headers.get('Content-Length', 0))
             else:
-                print(f"Error getting track size: {response.status_code}")
+                logger.error(f"Error getting track size: {response.status_code}")
                 return None
         except Exception as e:
-            print(f"Error getting track size: {e}")
+            logger.error(f"Error getting track size: {e}")
             return None
 
     def start_artist_tracks_loading(self, artist, stop_previous=True) -> TrackLoader:
@@ -1531,7 +1535,7 @@ class Player(QObject):
     @pyqtSlot(str)
     def _handle_loader_error(self, error_msg: str) -> None:
         """Handle errors from track loader"""
-        print(f"Error loading tracks: {error_msg}")
+        logger.error(f"Error loading tracks: {error_msg}")
 
     @pyqtSlot(object)
     def _handle_first_track(self, track: object) -> None:
@@ -1558,7 +1562,7 @@ class Player(QObject):
             self.plex.library.search("", limit=1)
             return True
         except Exception as e:
-            print(f"Connection check failed: {e}")
+            logger.error(f"Connection check failed: {e}")
             return False
 
     def _retry_connection(self) -> bool:
@@ -1580,7 +1584,7 @@ class Player(QObject):
                         return True
                 time.sleep(RETRY_DELAY)
             except Exception as e:
-                print(f"Retry attempt {attempt + 1} failed: {e}")
+                logger.error(f"Retry attempt {attempt + 1} failed: {e}")
                 if attempt < MAX_RETRY_ATTEMPTS - 1:
                     time.sleep(RETRY_DELAY)
                     
@@ -1611,16 +1615,16 @@ class Player(QObject):
 
     def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
         """Handle media status changes."""
-        print(f"Media status changed to: {status}")
+        logger.debug(f"Media status changed to: {status}")
         if status == QMediaPlayer.MediaStatus.LoadedMedia:
-            print("Media loaded successfully")
+            logger.debug("Media loaded successfully")
             self._playback_attempts = 0
             self._start_playback_start_check()
         elif status == QMediaPlayer.MediaStatus.InvalidMedia:
-            print("Invalid media")
+            logger.error("Invalid media")
             self.playback_failed.emit("Invalid media format")
         elif status == QMediaPlayer.MediaStatus.NoMedia:
-            print("No media loaded")
+            logger.debug("No media loaded")
             self.playback_failed.emit("No media loaded")
 
     def _start_playback_start_check(self) -> None:
@@ -1633,19 +1637,19 @@ class Player(QObject):
             return
 
         if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            print("Playback confirmed started")
+            logger.debug("Playback confirmed started")
             self.playback_started.emit()
             return
 
-        print("Playback not started yet")
+        logger.debug("Playback not started yet")
         self._playback_attempts += 1
         
         if self._playback_attempts < self._max_playback_attempts:
-            print(f"Retrying playback (attempt {self._playback_attempts + 1})")
+            logger.debug(f"Retrying playback (attempt {self._playback_attempts + 1})")
             self._recreate_player()
             self._start_playback_start_check()
         else:
-            print("Max playback attempts reached")
+            logger.error("Max playback attempts reached")
             self.playback_failed.emit("Failed to start playback after multiple attempts")
 
 class PlayerThread(QThread):

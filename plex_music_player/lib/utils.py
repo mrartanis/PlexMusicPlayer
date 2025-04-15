@@ -6,6 +6,9 @@ from typing import Optional, Tuple
 from plexapi.server import PlexServer
 from plexapi.audio import Track
 from PyQt6.QtGui import QImage, QPixmap
+from .logger import Logger
+
+logger = Logger()
 
 
 def format_time(ms: int) -> str:
@@ -28,27 +31,27 @@ def load_cover_image(plex: PlexServer, track: Track, size: Tuple[int, int] = (20
     
     try:
         cover_url = track.thumb
-        print(f"DEBUG: Initial cover URL: {cover_url}")
+        logger.debug(f"Initial cover URL: {cover_url}")
         if not cover_url:
             return None
         if cover_url.startswith('/'):
             cover_url = f"{plex._baseurl}{cover_url}"
-            print(f"DEBUG: Full cover URL: {cover_url}")
+            logger.debug(f"Full cover URL: {cover_url}")
         headers = {'X-Plex-Token': plex._token}
         response = plex._session.get(cover_url, headers=headers)
-        print(f"DEBUG: Response status code: {response.status_code}")
+        logger.debug(f"Response status code: {response.status_code}")
         if response.status_code != 200:
             return None
         image = QImage()
         image.loadFromData(response.content)
-        print(f"DEBUG: Image loaded, size: {image.width()}x{image.height()}")
+        logger.debug(f"Image loaded, size: {image.width()}x{image.height()}")
         
         image = image.convertToFormat(QImage.Format.Format_RGB32)
         return QPixmap.fromImage(image)
     except Exception as e:
-        print(f"Error loading cover: {e}")
-        print(f"DEBUG: Exception type: {type(e).__name__}")
-        print(f"DEBUG: Full exception details: {repr(e)}")
+        logger.error(f"Error loading cover: {e}")
+        logger.debug(f"Exception type: {type(e).__name__}")
+        logger.debug(f"Full exception details: {repr(e)}")
         return None
 
 
@@ -64,7 +67,7 @@ def download_artwork(track: Track) -> bytes | str | os.PathLike:
                 temp_file.close()
                 return temp_file.name
         except Exception as e:
-            print(f"Error downloading artwork: {e}")
+            logger.error(f"Error downloading artwork: {e}")
     return None
 
 
