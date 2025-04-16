@@ -8,6 +8,7 @@ from plexapi.audio import Track
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtCore import Qt
 from .logger import Logger
+from .cover_cache import cover_cache
 
 logger = Logger()
 
@@ -44,27 +45,11 @@ def load_cover_image(plex: PlexServer, track: Track, size: int = 600) -> Optiona
         if not thumb:
             return None
             
-        # Используем thumb в качестве ключа кэша
-        cache_key = thumb
+        thumb_url = plex.url(thumb, includeToken=True)
         
-        # Проверяем кэш
-        if cache_key in _cover_cache:
-            return _cover_cache[cache_key]
+        # Используем кэш для получения изображения
+        return cover_cache.get_qt_image(thumb_url)
             
-        # Получаем URL обложки с указанным размером
-        thumb_url = plex.url(thumb, includeToken=True) + f"&width={size}&height={size}"
-        
-        response = requests.get(thumb_url, stream=True)
-        if response.status_code == 200:
-            image = QImage()
-            image.loadFromData(response.content)
-            pixmap = QPixmap.fromImage(image)
-            
-            # Сохраняем в кэш
-            _cover_cache[cache_key] = pixmap
-            return pixmap
-            
-        return None
     except Exception as e:
         logger.error(f"Error loading cover: {e}")
         return None

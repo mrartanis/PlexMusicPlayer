@@ -5,6 +5,7 @@ from plex_music_player.lib.media_center import MediaCenterInterface
 from PyQt6.QtCore import QObject
 from plex_music_player.models.player import Player
 from plex_music_player.lib.logger import Logger
+from .cover_cache import cover_cache
 
 logger = Logger()
 
@@ -136,9 +137,8 @@ if sys.platform == 'darwin':
                         # Add token to URL
                         response = f"{response}?X-Plex-Token={track._server._token}"
                         logger.debug(f"Full cover URL: {response}")
-                        image_data = track._server._session.get(response).content
-                        logger.debug(f"Image data size: {len(image_data)} bytes")
-                        image = NSImage.alloc().initWithData_(image_data)
+                        
+                        image = cover_cache.get_ns_image(response)
                         if image:
                             logger.debug("Successfully created NSImage")
                             artwork = MediaPlayer.MPMediaItemArtwork.alloc().initWithImage_(image)
