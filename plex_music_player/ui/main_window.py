@@ -12,9 +12,10 @@ from PyQt6.QtWidgets import (
     QSlider,
     QDialog,
     QProgressBar,
+    QSplitter,
 )
 from PyQt6.QtGui import QIcon
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
 from plex_music_player.models.player import PlayerThread
 from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog
 from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image, pyintaller_resource_path
@@ -33,11 +34,14 @@ class MainWindow(QMainWindow):
         self.loading_tracks = False
         self.tracks_to_load = 0
         self.tracks_loaded = 0
-
+        
         # Setup initial UI showing connection status
         self.setup_ui(show_connect_only=True)
         
-        self.setMinimumSize(300, 700)  # Минимальные размеры чтобы UI не ломался
+        # Set minimum size and store initial width
+        self.setMinimumSize(300, 700)
+        self.initial_width = self.width()
+        self.is_wide_mode = self.width() >= self.initial_width * 1.5
     
     @pyqtSlot(object)
     def on_player_ready(self, player):
@@ -73,10 +77,61 @@ class MainWindow(QMainWindow):
         if sys.platform in ["linux",  "win32"]:
             self.setWindowIcon(QIcon(pyintaller_resource_path("icon/icon_256x256.png")))
 
-
+    def resizeEvent(self, event):
+        """Handle window resize events to switch between layouts"""
+        super().resizeEvent(event)
+        if not hasattr(self, 'player'):
+            return
+            
+        new_width = event.size().width()
+        should_be_wide = new_width >= self.initial_width * 1.5
+        
+        if should_be_wide != self.is_wide_mode:
+            current_track = self.player.current_track
+            current_position = self.player.get_current_position() if self.player.is_playing() else 0
+            is_playing = self.player.is_playing()
+            volume = self.volume_slider.value()
+            current_playlist_index = self.player.current_playlist_index
+            
+            self.is_wide_mode = should_be_wide
+            self.setup_ui(show_connect_only=False)
+            
+            if current_track:
+                self.player.current_track = current_track
+                self.player.current_playlist_index = current_playlist_index
+                self.track_info.setText(format_track_info(current_track))
+                self.progress_slider.setMaximum(current_track.duration)
+                self.progress_slider.setValue(current_position)
+                self.progress_slider.setEnabled(True)
+                self.update_time_label(current_position, current_track.duration)
+                self.load_cover()
+                
+                if is_playing:
+                    self.play_button.setText("⏸")
+                else:
+                    self.play_button.setText("▶")
+                    
+                self.volume_slider.setValue(volume)
+                
+                self.play_button.setEnabled(True)
+                self.prev_button.setEnabled(True)
+                self.next_button.setEnabled(True)
+                
+                if self.player.playlist:
+                    self.playlist_list.clear()
+                    for track in self.player.playlist:
+                        year = f" ({track.year})" if hasattr(track, 'year') and track.year else ""
+                        self.playlist_list.addItem(f"{track.title}{year} - {track.grandparentTitle} [{track.parentTitle}]")
+                    self.update_playlist_selection()
+                    if current_playlist_index >= 0 and current_playlist_index < self.playlist_list.count():
+                        self.playlist_list.scrollToItem(self.playlist_list.item(current_playlist_index))
+            
+        # Update cover size
+        if hasattr(self, 'cover_label') and hasattr(self, 'player') and self.player.current_track:
+            self.load_cover()
+            
     def setup_ui(self, show_connect_only: bool = True) -> None:
-        """Updated setup_ui method to keep the track info label truly centered,
-        especially in narrow windows."""
+        """Updated setup_ui method with adaptive layout"""
         self.setWindowTitle("Plex Music Player")
         self.__load_window_icons()
 
@@ -108,140 +163,106 @@ class MainWindow(QMainWindow):
             layout.addLayout(connect_container)
             return
 
-        # --- Full UI setup below ---
-        # Center section: cover and track info
-        center_container = QVBoxLayout()
-        center_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        center_container.setSpacing(15)
+        if self.is_wide_mode:
+            # Create splitter for resizable layout
+            splitter = QSplitter(Qt.Orientation.Horizontal)
+            splitter.setChildrenCollapsible(False)  # Prevent sections from being collapsed
+            
+            # Left side - playlist
+            self.playlist_widget = self.create_playlist_widget()
+            splitter.addWidget(self.playlist_widget)
+            
+            # Right side container
+            right_container = QWidget()
+            right_layout = QVBoxLayout(right_container)
+            right_layout.setSpacing(5)
+            
+            # Cover container (takes most space)
+            cover_container = QWidget()
+            cover_layout = QVBoxLayout(cover_container)
+            cover_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.cover_label = QLabel()
+            self.cover_label.setMinimumHeight(400)  # Minimum height for cover
+            self.cover_label.setStyleSheet("border: none; background: transparent;")
+            self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            cover_layout.addWidget(self.cover_label)
+            right_layout.addWidget(cover_container, stretch=80)
+            
+            # Bottom info and controls container
+            bottom_container = QWidget()
+            bottom_layout = QVBoxLayout(bottom_container)
+            bottom_layout.setSpacing(5)
+            bottom_layout.setContentsMargins(0, 0, 0, 0)
+            
+            # Track info with smaller height
+            self.track_info = QLabel("No track")
+            self.track_info.setWordWrap(True)
+            self.track_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.track_info.setMaximumHeight(50)
+            bottom_layout.addWidget(self.track_info)
+            
+            # Controls
+            controls_layout = self.create_controls_layout()
+            bottom_layout.addLayout(controls_layout)
+            
+            right_layout.addWidget(bottom_container, stretch=20)
+            
+            splitter.addWidget(right_container)
+            
+            # Set initial sizes (40% : 60%)
+            splitter.setSizes([int(self.width() * 0.4), int(self.width() * 0.6)])
+            
+            # Add splitter to layout
+            layout.addWidget(splitter)
+            
+            # Style the splitter handle
+            splitter.setStyleSheet("""
+                QSplitter::handle {
+                    background-color: #2d2d2d;
+                    width: 2px;
+                }
+                QSplitter::handle:hover {
+                    background-color: #0078d4;
+                }
+            """)
+        else:
+            # Normal mode layout
+            main_content = QVBoxLayout()  # Changed to QVBoxLayout for vertical stacking
+            main_content.setSpacing(10)
+            
+            # Top section with cover and track info
+            top_container = QVBoxLayout()
+            top_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            top_container.setSpacing(15)
 
-        # Cover container
-        cover_container = QHBoxLayout()
-        cover_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        cover_container.setContentsMargins(0, 0, 0, 0)
-        cover_container.setSpacing(0)
-        self.cover_label = QLabel()
-        self.cover_label.setFixedHeight(300)
-        self.cover_label.setStyleSheet("border: none; background: transparent;")
-        self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        cover_container.addWidget(self.cover_label)
-        center_container.addLayout(cover_container)
+            # Cover container
+            cover_container = QHBoxLayout()
+            cover_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.cover_label = QLabel()
+            self.cover_label.setFixedHeight(300)
+            self.cover_label.setStyleSheet("border: none; background: transparent;")
+            self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            cover_container.addWidget(self.cover_label)
+            top_container.addLayout(cover_container)
 
-        # Track info container
-        track_info_container = QHBoxLayout()
-        track_info_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # Changed margins to (0,0,0,0) and removed min/max width lines for track_info
-        track_info_container.setContentsMargins(0, 0, 0, 0)
-
-        self.track_info = QLabel("No track")
-        self.track_info.setWordWrap(True)
-        self.track_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        # Removed self.track_info.setMinimumWidth(...) / setMaximumWidth(...)
-        track_info_container.addWidget(self.track_info)
-        center_container.addLayout(track_info_container)
-
-        layout.addLayout(center_container)
-
-        # Playlist section
-        playlist_widget = QWidget()
-        playlist_layout = QVBoxLayout(playlist_widget)
-        playlist_layout.setContentsMargins(0, 0, 0, 0)
-        playlist_layout.setSpacing(5)
-        playlist_header = QHBoxLayout()
+            # Track info
+            self.track_info = QLabel("No track")
+            self.track_info.setWordWrap(True)
+            self.track_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            top_container.addWidget(self.track_info)
+            
+            main_content.addLayout(top_container)
+            
+            # Controls section
+            controls_layout = self.create_controls_layout()
+            main_content.addLayout(controls_layout)
+            
+            # Playlist section at the bottom
+            self.playlist_widget = self.create_playlist_widget()
+            main_content.addWidget(self.playlist_widget)
+            
+            layout.addLayout(main_content)
         
-        self.add_button = QPushButton("✙")
-        self.add_button.setFixedSize(30, 30)
-        self.add_button.setStyleSheet(self.get_button_style())
-        self.add_button.clicked.connect(self.show_add_tracks_dialog)
-        playlist_header.addWidget(self.add_button)
-        
-        self.shuffle_button = QPushButton("⇄")
-        self.shuffle_button.setFixedSize(30, 30)
-        self.shuffle_button.setStyleSheet(self.get_button_style())
-        self.shuffle_button.clicked.connect(self.shuffle_playlist)
-        playlist_header.addWidget(self.shuffle_button)
-        
-        self.remove_button = QPushButton("✖")
-        self.remove_button.setFixedSize(30, 30)
-        self.remove_button.setStyleSheet(self.get_button_style())
-        self.remove_button.clicked.connect(self.remove_from_playlist)
-        playlist_header.addWidget(self.remove_button)
-        
-        self.clear_button = QPushButton("☠︎︎")
-        self.clear_button.setFixedSize(30, 30)
-        self.clear_button.setStyleSheet(self.get_button_style())
-        self.clear_button.clicked.connect(self.clear_playlist)
-        playlist_header.addWidget(self.clear_button)
-
-        self.scroll_to_current_button = QPushButton("⌖")
-        self.scroll_to_current_button.setFixedSize(30, 30)
-        self.scroll_to_current_button.setStyleSheet(self.get_button_style())
-        self.scroll_to_current_button.setToolTip("Прокрутить к текущему треку")
-        self.scroll_to_current_button.clicked.connect(self.scroll_to_current_track)
-        playlist_header.addWidget(self.scroll_to_current_button)
-        
-        playlist_layout.addLayout(playlist_header)
-        
-        self.playlist_list = QListWidget()
-        self.playlist_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.playlist_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        self.playlist_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
-        self.playlist_list.itemDoubleClicked.connect(self.play_from_playlist)
-        playlist_layout.addWidget(self.playlist_list)
-        
-        layout.addWidget(playlist_widget)
-
-        # Bottom control panel
-        controls_layout = QVBoxLayout()
-        controls_layout.setContentsMargins(10, 10, 10, 10)
-        controls_layout.setSpacing(10)
-
-        # Progress slider
-        self.progress_slider = QSlider(Qt.Orientation.Horizontal)
-        self.progress_slider.setEnabled(False)
-        self.progress_slider.sliderReleased.connect(lambda: self.seek_position(self.progress_slider.value()))
-        controls_layout.addWidget(self.progress_slider)
-
-        # Time label
-        self.time_label = QLabel("00:00 / 00:00")
-        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.time_label.setStyleSheet("font-family: 'Courier New', Courier, monospace; font-weight: bold;")
-        controls_layout.addWidget(self.time_label)
-
-        # Control buttons layout
-        buttons_layout = QHBoxLayout()
-        buttons_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        buttons_layout.setSpacing(10)
-
-        self.prev_button = QPushButton("⏮")
-        self.prev_button.setEnabled(False)
-        self.prev_button.setFixedSize(40, 40)
-        self.prev_button.clicked.connect(self.play_previous_track)
-        buttons_layout.addWidget(self.prev_button)
-
-        self.play_button = QPushButton("▶")
-        self.play_button.setEnabled(False)
-        self.play_button.setFixedSize(40, 40)
-        self.play_button.clicked.connect(self.toggle_play)
-        buttons_layout.addWidget(self.play_button)
-
-        self.next_button = QPushButton("⏭")
-        self.next_button.setEnabled(False)
-        self.next_button.setFixedSize(40, 40)
-        self.next_button.clicked.connect(self.play_next_track)
-        buttons_layout.addWidget(self.next_button)
-
-        controls_layout.addLayout(buttons_layout)
-
-        # Volume slider
-        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
-        self.volume_slider.setRange(0, 100)
-        self.volume_slider.setValue(100)
-        self.volume_slider.valueChanged.connect(self.change_volume)
-        self.volume_slider.setFixedHeight(20)
-        controls_layout.addWidget(self.volume_slider)
-
-        layout.addLayout(controls_layout)
-
         # Apply styles
         self.setStyleSheet("""
             QMainWindow, QWidget {
@@ -374,7 +395,7 @@ class MainWindow(QMainWindow):
         self.update_timer.start(1000)
 
         # Load saved playlist if connected
-        if self.player.plex:
+        if hasattr(self, 'player') and self.player.plex:
             self.player.load_playlist()
             self.playlist_list.clear()
             for track in self.player.playlist:
@@ -393,6 +414,112 @@ class MainWindow(QMainWindow):
             self.player.playback_state_changed.connect(self.update_play_button)
             if not self.player.is_playing():
                 self.play_button.setText("▶")
+
+    def create_playlist_widget(self) -> QWidget:
+        """Create playlist widget with controls"""
+        playlist_widget = QWidget()
+        playlist_layout = QVBoxLayout(playlist_widget)
+        playlist_layout.setContentsMargins(0, 0, 0, 0)
+        playlist_layout.setSpacing(5)
+        
+        # Playlist controls
+        playlist_header = QHBoxLayout()
+        
+        self.add_button = QPushButton("✙")
+        self.add_button.setFixedSize(30, 30)
+        self.add_button.setStyleSheet(self.get_button_style())
+        self.add_button.clicked.connect(self.show_add_tracks_dialog)
+        playlist_header.addWidget(self.add_button)
+        
+        self.shuffle_button = QPushButton("⇄")
+        self.shuffle_button.setFixedSize(30, 30)
+        self.shuffle_button.setStyleSheet(self.get_button_style())
+        self.shuffle_button.clicked.connect(self.shuffle_playlist)
+        playlist_header.addWidget(self.shuffle_button)
+        
+        self.remove_button = QPushButton("✖")
+        self.remove_button.setFixedSize(30, 30)
+        self.remove_button.setStyleSheet(self.get_button_style())
+        self.remove_button.clicked.connect(self.remove_from_playlist)
+        playlist_header.addWidget(self.remove_button)
+        
+        self.clear_button = QPushButton("☠︎︎")
+        self.clear_button.setFixedSize(30, 30)
+        self.clear_button.setStyleSheet(self.get_button_style())
+        self.clear_button.clicked.connect(self.clear_playlist)
+        playlist_header.addWidget(self.clear_button)
+
+        self.scroll_to_current_button = QPushButton("⌖")
+        self.scroll_to_current_button.setFixedSize(30, 30)
+        self.scroll_to_current_button.setStyleSheet(self.get_button_style())
+        self.scroll_to_current_button.setToolTip("Прокрутить к текущему треку")
+        self.scroll_to_current_button.clicked.connect(self.scroll_to_current_track)
+        playlist_header.addWidget(self.scroll_to_current_button)
+        
+        playlist_layout.addLayout(playlist_header)
+        
+        # Playlist list
+        self.playlist_list = QListWidget()
+        self.playlist_list.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.playlist_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.playlist_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
+        self.playlist_list.itemDoubleClicked.connect(self.play_from_playlist)
+        playlist_layout.addWidget(self.playlist_list)
+        
+        return playlist_widget
+        
+    def create_controls_layout(self) -> QVBoxLayout:
+        """Create playback controls layout"""
+        controls_layout = QVBoxLayout()
+        controls_layout.setContentsMargins(10, 10, 10, 10)
+        controls_layout.setSpacing(10)
+
+        # Progress slider
+        self.progress_slider = QSlider(Qt.Orientation.Horizontal)
+        self.progress_slider.setEnabled(False)
+        self.progress_slider.sliderReleased.connect(lambda: self.seek_position(self.progress_slider.value()))
+        controls_layout.addWidget(self.progress_slider)
+
+        # Time label
+        self.time_label = QLabel("00:00 / 00:00")
+        self.time_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.time_label.setStyleSheet("font-family: 'Courier New', Courier, monospace; font-weight: bold;")
+        controls_layout.addWidget(self.time_label)
+
+        # Control buttons
+        buttons_layout = QHBoxLayout()
+        buttons_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        buttons_layout.setSpacing(10)
+
+        self.prev_button = QPushButton("⏮")
+        self.prev_button.setEnabled(False)
+        self.prev_button.setFixedSize(40, 40)
+        self.prev_button.clicked.connect(self.play_previous_track)
+        buttons_layout.addWidget(self.prev_button)
+
+        self.play_button = QPushButton("▶")
+        self.play_button.setEnabled(False)
+        self.play_button.setFixedSize(40, 40)
+        self.play_button.clicked.connect(self.toggle_play)
+        buttons_layout.addWidget(self.play_button)
+
+        self.next_button = QPushButton("⏭")
+        self.next_button.setEnabled(False)
+        self.next_button.setFixedSize(40, 40)
+        self.next_button.clicked.connect(self.play_next_track)
+        buttons_layout.addWidget(self.next_button)
+
+        controls_layout.addLayout(buttons_layout)
+
+        # Volume slider
+        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider.setRange(0, 100)
+        self.volume_slider.setValue(100)
+        self.volume_slider.valueChanged.connect(self.change_volume)
+        self.volume_slider.setFixedHeight(20)
+        controls_layout.addWidget(self.volume_slider)
+        
+        return controls_layout
 
 
     def show_connection_dialog(self) -> None:
