@@ -2,6 +2,8 @@ PyQt6>=6.4.0
 plexapi>=4.15.0
 requests
 setuptools
+numpy>=1.20.0
+scikit-learn>=1.0.0
 py2app; sys_platform == 'darwin'
 pyobjc-framework-MediaPlayer; sys_platform == 'darwin'
 pyobjc-framework-Cocoa; sys_platform == 'darwin'

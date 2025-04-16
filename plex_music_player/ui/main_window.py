@@ -14,11 +14,12 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QSplitter,
 )
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QImage
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
 from plex_music_player.models.player import PlayerThread
 from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog
 from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image, pyintaller_resource_path
+from plex_music_player.lib.color_utils import get_dominant_color, get_contrasting_text_color, adjust_color_brightness
 from plex_music_player.lib.logger import Logger
 
 logger = Logger()
@@ -350,44 +351,8 @@ class MainWindow(QMainWindow):
         self.track_info.setObjectName("track_info")
         self.time_label.setObjectName("time_label")
 
-        # Update control buttons style
-        control_buttons_style = """
-            QPushButton {
-                background-color: #0078d4;
-                border: none;
-                border-radius: 20px;
-                font-size: 16px;
-                padding: 0px;
-                color: white;
-            }
-            QPushButton:hover {
-                background-color: #1e8ae6;
-            }
-            QPushButton:disabled {
-                background-color: #2d2d2d;
-                color: #666666;
-            }
-        """
-        for btn in [self.prev_button, self.play_button, self.next_button]:
-            btn.setStyleSheet(control_buttons_style)
-            btn.setFixedSize(40, 40)
-
-        # Update playlist buttons style
-        playlist_buttons_style = """
-            QPushButton {
-                background-color: #2d2d2d;
-                border: none;
-                border-radius: 12px;
-                font-size: 12px;
-                padding: 0px;
-            }
-            QPushButton:hover {
-                background-color: #3d3d3d;
-            }
-        """
-        for btn in [self.add_button, self.shuffle_button, self.remove_button, self.clear_button, self.scroll_to_current_button]:
-            btn.setStyleSheet(playlist_buttons_style)
-            btn.setFixedSize(24, 24)
+        # Reset button styles to default
+        self._reset_button_styles()
 
         # Timer for progress updates
         self.update_timer = QTimer()
@@ -552,14 +517,141 @@ class MainWindow(QMainWindow):
         """Load and display album cover."""
         if not self.player.current_track or not self.player.plex:
             return
+        
+        # Получаем URL обложки
+        thumb = None
+        if hasattr(self.player.current_track, 'parentThumb'):
+            thumb = self.player.current_track.parentThumb
+        elif hasattr(self.player.current_track, 'thumb'):
+            thumb = self.player.current_track.thumb
+        
+        if not thumb:
+            return
+        
+        thumb_url = self.player.plex.url(thumb, includeToken=True)
         pixmap = load_cover_image(self.player.plex, self.player.current_track)
+        
         if pixmap:
             window_width = self.width()
             window_height = self.height()
             scaled_pixmap = pixmap.scaled(window_width, window_height, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             self.cover_label.setPixmap(scaled_pixmap)
+            
+            # Extract dominant color from the cover
+            image = scaled_pixmap.toImage()
+            dominant_color = get_dominant_color(image, url=thumb_url)
+            
+            if dominant_color:
+                # Get contrasting text color
+                text_color = get_contrasting_text_color(dominant_color)
+                text_color_str = f"rgb({text_color.red()}, {text_color.green()}, {text_color.blue()})"
+                
+                # Create slightly darker and lighter versions for hover and pressed states
+                darker_color = adjust_color_brightness(dominant_color, 0.8)
+                lighter_color = adjust_color_brightness(dominant_color, 1.2)
+                
+                darker_color_str = f"rgb({darker_color.red()}, {darker_color.green()}, {darker_color.blue()})"
+                lighter_color_str = f"rgb({lighter_color.red()}, {lighter_color.green()}, {lighter_color.blue()})"
+                
+                # Update control buttons style
+                control_buttons_style = f"""
+                    QPushButton {{
+                        background-color: {dominant_color.name()};
+                        border: none;
+                        border-radius: 20px;
+                        font-size: 16px;
+                        padding: 0px;
+                        color: {text_color_str};
+                    }}
+                    QPushButton:hover {{
+                        background-color: {lighter_color_str};
+                    }}
+                    QPushButton:disabled {{
+                        background-color: #2d2d2d;
+                        color: #666666;
+                    }}
+                """
+                for btn in [self.prev_button, self.play_button, self.next_button]:
+                    btn.setStyleSheet(control_buttons_style)
+                
+                # Update playlist buttons style
+                playlist_buttons_style = f"""
+                    QPushButton {{
+                        background-color: {dominant_color.name()};
+                        border: none;
+                        border-radius: 12px;
+                        font-size: 12px;
+                        padding: 0px;
+                        color: {text_color_str};
+                    }}
+                    QPushButton:hover {{
+                        background-color: {lighter_color_str};
+                    }}
+                    QPushButton:disabled {{
+                        background-color: #2d2d2d;
+                        color: #666666;
+                    }}
+                    QPushButton:pressed {{
+                        background-color: {darker_color_str};
+                    }}
+                """
+                for btn in [self.add_button, self.shuffle_button, self.remove_button, self.clear_button, self.scroll_to_current_button]:
+                    btn.setStyleSheet(playlist_buttons_style)
+                
+                # Update slider colors
+                slider_style = f"""
+                    QSlider::groove:horizontal {{
+                        border: none;
+                        height: 4px;
+                        background-color: #2d2d2d;
+                        border-radius: 2px;
+                    }}
+                    QSlider::handle:horizontal {{
+                        background-color: {dominant_color.name()};
+                        border: none;
+                        width: 12px;
+                        margin: -4px 0;
+                        border-radius: 6px;
+                    }}
+                    QSlider::sub-page:horizontal {{
+                        background-color: {dominant_color.name()};
+                        border-radius: 2px;
+                    }}
+                """
+                self.progress_slider.setStyleSheet(slider_style)
+                self.volume_slider.setStyleSheet(slider_style)
+                
+                # Update selected item color in playlist
+                # Выбираем более светлый фон если текст черный
+                playlist_bg_color = "#404040" if text_color.name() == "#ffffff" else "#b0b0b0"
+                hover_bg_color = "#505050" if text_color.name() == "#ffffff" else "#a0a0a0"
+                
+                self.playlist_list.setStyleSheet(f"""
+                    QListWidget {{
+                        background-color: {playlist_bg_color};
+                        border: none;
+                        border-radius: 3px;
+                        padding: 3px;
+                        color: {text_color_str};
+                    }}
+                    QListWidget::item {{
+                        padding: 3px;
+                        border-radius: 2px;
+                        color: {text_color_str};
+                    }}
+                    QListWidget::item:selected {{
+                        background-color: {dominant_color.name()};
+                        color: {text_color_str};
+                    }}
+                    QListWidget::item:hover {{
+                        background-color: {hover_bg_color};
+                        color: {text_color_str};
+                    }}
+                """)
         else:
             self.cover_label.clear()
+            # Reset to default styles if no cover
+            self._reset_button_styles()
 
     def toggle_play(self) -> None:
         """Toggle play/pause state. If no track is loaded but a playlist exists,
@@ -864,3 +956,182 @@ class MainWindow(QMainWindow):
                     self.playlist_list.scrollToItem(current_item)
         except Exception as e:
             logger.error(f"Error scrolling to current track: {e}")
+
+    def _reset_button_styles(self) -> None:
+        """Reset button styles to default."""
+        self.play_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0078d4;
+                border: none;
+                border-radius: 20px;
+                font-size: 16px;
+                padding: 0px;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: #1e8ae6;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #666666;
+            }
+        """)
+        self.prev_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0078d4;
+                border: none;
+                border-radius: 20px;
+                font-size: 16px;
+                padding: 0px;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: #1e8ae6;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #666666;
+            }
+        """)
+        self.next_button.setStyleSheet("""
+            QPushButton {
+                background-color: #0078d4;
+                border: none;
+                border-radius: 20px;
+                font-size: 16px;
+                padding: 0px;
+                color: white;
+            }
+            QPushButton:hover {
+                background-color: #1e8ae6;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #666666;
+            }
+        """)
+        self.add_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: none;
+                border-radius: 12px;
+                color: white;
+                font-size: 12px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #666666;
+            }
+        """)
+        self.remove_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: none;
+                border-radius: 12px;
+                color: white;
+                font-size: 12px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #666666;
+            }
+        """)
+        self.clear_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: none;
+                border-radius: 12px;
+                color: white;
+                font-size: 12px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #666666;
+            }
+        """)
+        self.scroll_to_current_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: none;
+                border-radius: 12px;
+                color: white;
+                font-size: 12px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #666666;
+            }
+        """)
+        self.progress_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: none;
+                height: 4px;
+                background-color: #2d2d2d;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background-color: #0078d4;
+                border: none;
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }
+            QSlider::sub-page:horizontal {
+                background-color: #0078d4;
+                border-radius: 2px;
+            }
+        """)
+        self.volume_slider.setStyleSheet("""
+            QSlider::groove:horizontal {
+                border: none;
+                height: 4px;
+                background-color: #2d2d2d;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background-color: #0078d4;
+                border: none;
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }
+            QSlider::sub-page:horizontal {
+                background-color: #0078d4;
+                border-radius: 2px;
+            }
+        """)
+        self.playlist_list.setStyleSheet("""
+            QListWidget {
+                background-color: #2d2d2d;
+                border: none;
+                border-radius: 3px;
+                padding: 3px;
+                color: #ffffff;
+            }
+            QListWidget::item {
+                padding: 3px;
+                border-radius: 2px;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d4;
+            }
+            QListWidget::item:hover {
+                background-color: #3d3d3d;
+            }
+        """)
