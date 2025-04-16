@@ -868,44 +868,33 @@ class Player(QObject):
 
     @pyqtSlot(result=bool)
     def play_next_track(self) -> bool:
-        """Play the next track."""
-        # First try to play from playlist
+        """Play the next track in the playlist."""
+        if not self.playlist:
+            return False
+        
         if self.current_playlist_index >= 0 and self.current_playlist_index < len(self.playlist) - 1:
-            # Stop current playback
-            if self._player:
-                self._player.stop()
-                
-            # Move to next track
+            # Store current track info
+            current_track = self.current_track
+            current_index = self.current_playlist_index
+            
+            # Recreate player to ensure clean state
+            if not self._recreate_player():
+                logger.error("Failed to recreate player")
+                return False
+            
+            # Update track index and current track
             self.current_playlist_index += 1
             self.current_track = self.playlist[self.current_playlist_index]
             
-            # Play the track
+            # Reset playback attempts counter
+            self._playback_attempts = 0
+            
+            # Start playback of new track
             success = self._play_track_impl()
             if success:
                 self.track_changed.emit()
                 QTimer.singleShot(120, self._update_media_center)
             return success
-        # Then try to play from album tracks if available
-        elif self.current_album and self.tracks and self.current_track:
-            try:
-                current_index = self.tracks.index(self.current_track)
-                if current_index < len(self.tracks) - 1:
-                    # Stop current playback
-                    if self._player:
-                        self._player.stop()
-                        
-                    # Move to next track
-                    self.current_track = self.tracks[current_index + 1]
-                    
-                    # Play the track
-                    success = self._play_track_impl()
-                    if success:
-                        self.track_changed.emit()
-                        QTimer.singleShot(120, self._update_media_center)
-                    return success
-            except ValueError:
-                # current_track not found in tracks list
-                pass
         return False
 
     @pyqtSlot(result=bool)
@@ -1646,7 +1635,18 @@ class Player(QObject):
         
         if self._playback_attempts < self._max_playback_attempts:
             logger.debug(f"Retrying playback (attempt {self._playback_attempts + 1})")
+            # Store current track info before recreating player
+            current_track = self.current_track
+            current_index = self.current_playlist_index
+            
             self._recreate_player()
+            
+            # Restore track info after player recreation
+            self.current_track = current_track
+            self.current_playlist_index = current_index
+            
+            # Try playing the same track again
+            self._play_track_impl()
             self._start_playback_start_check()
         else:
             logger.error("Max playback attempts reached")
