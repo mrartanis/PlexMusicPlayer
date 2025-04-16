@@ -2,14 +2,17 @@ import sys
 import os
 import requests
 import tempfile
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 from plexapi.server import PlexServer
 from plexapi.audio import Track
 from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtCore import Qt
 from .logger import Logger
 
 logger = Logger()
 
+# Простой кэш в памяти для обложек
+_cover_cache: Dict[str, QPixmap] = {}
 
 def format_time(ms: int) -> str:
     total_seconds = ms // 1000
@@ -25,42 +28,54 @@ def format_track_info(track: Track) -> str:
     return f"{track.title}{year}\n{track.grandparentTitle}\n{track.parentTitle}"
 
 
-def load_cover_image(plex: PlexServer, track: Track, size: Tuple[int, int] = (200, 200)) -> Optional[QPixmap]:
-    if not track or not plex:
-        return None
-    
+def load_cover_image(plex: PlexServer, track: Track, size: int = 600) -> Optional[QPixmap]:
+    """Load cover image for track with caching."""
     try:
-        cover_url = track.thumb
-        logger.debug(f"Initial cover URL: {cover_url}")
-        if not cover_url:
+        if not track or not plex:
             return None
-        if cover_url.startswith('/'):
-            cover_url = f"{plex._baseurl}{cover_url}"
-            logger.debug(f"Full cover URL: {cover_url}")
-        headers = {'X-Plex-Token': plex._token}
-        response = plex._session.get(cover_url, headers=headers)
-        logger.debug(f"Response status code: {response.status_code}")
-        if response.status_code != 200:
+            
+        # Пробуем получить обложку альбома или трека
+        thumb = None
+        if hasattr(track, 'parentThumb'):
+            thumb = track.parentThumb
+        elif hasattr(track, 'thumb'):
+            thumb = track.thumb
+            
+        if not thumb:
             return None
-        image = QImage()
-        image.loadFromData(response.content)
-        logger.debug(f"Image loaded, size: {image.width()}x{image.height()}")
+            
+        # Используем thumb в качестве ключа кэша
+        cache_key = thumb
         
-        image = image.convertToFormat(QImage.Format.Format_RGB32)
-        return QPixmap.fromImage(image)
+        # Проверяем кэш
+        if cache_key in _cover_cache:
+            return _cover_cache[cache_key]
+            
+        # Получаем URL обложки с указанным размером
+        thumb_url = plex.url(thumb, includeToken=True) + f"&width={size}&height={size}"
+        
+        response = requests.get(thumb_url, stream=True)
+        if response.status_code == 200:
+            image = QImage()
+            image.loadFromData(response.content)
+            pixmap = QPixmap.fromImage(image)
+            
+            # Сохраняем в кэш
+            _cover_cache[cache_key] = pixmap
+            return pixmap
+            
+        return None
     except Exception as e:
         logger.error(f"Error loading cover: {e}")
-        logger.debug(f"Exception type: {type(e).__name__}")
-        logger.debug(f"Full exception details: {repr(e)}")
         return None
 
 
 def download_artwork(track: Track) -> bytes | str | os.PathLike:
     """Download artwork for the track and return the local file path."""
-    if hasattr(track, 'thumb') and track._server:
+    if hasattr(track, 'parentThumb') and track._server:
         try:
-            thumb_url = track._server.url(track.thumb)
-            response = requests.get(thumb_url, headers={'X-Plex-Token': track._server._token})
+            thumb_url = track._server.url(track.parentThumb, includeToken=True)
+            response = requests.get(thumb_url)
             if response.status_code == 200:
                 temp_file = tempfile.NamedTemporaryFile(suffix='.jpg', delete=False)
                 temp_file.write(response.content)

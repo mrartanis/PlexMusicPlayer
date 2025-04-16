@@ -76,31 +76,10 @@ class SavedTrack:
                     return None
                     
                 token = self._server._token
-                
-                # Get the base URL directly from the server
                 base_url = self._server.url(media_key)
-                logger.debug(f"DEBUG: Base URL: {base_url}")
                 
-                # Add verify=False to handle SSL certificate issues
-                try:
-                    # First try with SSL verification
-                    url = f"{base_url}?download=1&X-Plex-Token={token}"
-                    logger.debug(f"DEBUG: Trying URL with SSL verification: {url}")
-                    response = requests.head(url, verify=True, timeout=5)
-                    if response.status_code == 200:
-                        logger.debug(f"DEBUG: URL with SSL verification successful")
-                        return url
-                except requests.exceptions.SSLError:
-                    logger.debug("SSL verification failed, trying without verification...")
-                    # If SSL verification fails, try without it
-                    url = f"{base_url}?download=1&X-Plex-Token={token}"
-                    logger.debug(f"DEBUG: Trying URL without SSL verification: {url}")
-                    response = requests.head(url, verify=False, timeout=5)
-                    if response.status_code == 200:
-                        logger.debug(f"DEBUG: URL without SSL verification successful")
-                        return url
-                        
-                return None
+                # Просто возвращаем URL без проверок
+                return f"{base_url}?download=1&X-Plex-Token={token}"
                 
             return None
         except Exception as e:

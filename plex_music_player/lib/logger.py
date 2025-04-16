@@ -51,7 +51,7 @@ class Logger:
         
         # Create formatter
         formatter = logging.Formatter(
-            "%(asctime)s - [%(caller)s] - %(levelname)s - %(message)s",
+            "%(asctime)s.%(msecs)03d - [%(caller)s] - %(levelname)s - %(message)s",
             datefmt="%H:%M:%S"
         )
         console_handler.setFormatter(formatter)
