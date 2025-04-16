@@ -38,6 +38,26 @@ Tested on osx 15 and 12 with arm processor, windows 11, ubuntu 24.04 x86_64, ubu
   - Server connection details
   - Last played track
   - Playlist state
+- 🖥️ Adaptive layout
+  - Compact mode for normal window size
+  - Wide mode with resizable playlist (activated when window width is 1.5x the initial width)
+  - Drag handle to adjust playlist width in wide mode
+  - Large album artwork display in wide mode
+
+## Interface Modes
+
+### Compact Mode
+Default view optimized for normal window sizes:
+- Album artwork and track info at the top
+- Playback controls in the middle
+- Playlist at the bottom
+
+### Wide Mode
+Automatically activates when window width is 1.5x the initial width:
+- Resizable playlist on the left (drag handle to adjust width)
+- Large album artwork on the right
+- Track info and controls at the bottom right
+- Perfect for wide screens and multi-monitor setups
 
 ## Building from source
 
