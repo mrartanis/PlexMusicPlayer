@@ -23,7 +23,6 @@ def get_dominant_color(image: QImage, url: Optional[str] = None, num_colors: int
     Returns:
         QColor representing the dominant color or None if image is invalid
     """
-    # Проверяем кэш если есть URL
     if url and url in _color_cache:
         logger.debug(f"Using cached color for URL: {url}")
         return _color_cache[url]
@@ -91,6 +90,7 @@ def get_dominant_color(image: QImage, url: Optional[str] = None, num_colors: int
     mask = (pixels_rgb[:, 1] == max_vals)
     hue[mask] = 60 * (2 + (pixels_rgb[mask, 2] - pixels_rgb[mask, 0]) / diff[mask])
     # Blue is max
+    mask = (pixels_rgb[:, 2] == max_vals)
     mask = (pixels_rgb[:, 2] == max_vals)
     hue[mask] = 60 * (4 + (pixels_rgb[mask, 0] - pixels_rgb[mask, 1]) / diff[mask])
     
@@ -191,38 +191,17 @@ def get_dominant_color(image: QImage, url: Optional[str] = None, num_colors: int
         logger.debug(f"  - Pixels: {counts[i]} ({percentage:.1f}%)")
         logger.debug(f"  - Brightness: {brightness[i]:.2f}")
     
-    # Calculate angles to primary colors correctly
-    hue_degrees = centers_hsv[:, 0] * 360
-    
-    # For blue hues (around 240°)
-    angle_to_blue = np.minimum(np.abs(240 - hue_degrees), np.abs(240 - (hue_degrees + 360)))
-    blue_bonus = np.exp(-angle_to_blue**2 / 2000)
-    
-    # For red hues (around 0° or 360°)
-    angle_to_red = np.minimum(np.abs(hue_degrees - 0), np.abs(hue_degrees - 360))
-    is_red = angle_to_red < 30  # Consider hues within 30° of red
-    red_saturation = centers_hsv[:, 1]  # High saturation for vivid reds
-    
-    logger.debug("Hue analysis:")
-    for i in range(len(hue_degrees)):
-        logger.debug(f"Cluster {i+1}:")
-        logger.debug(f"  - Hue: {hue_degrees[i]:.1f}°")
-        logger.debug(f"  - Angle to blue: {angle_to_blue[i]:.1f}°")
-        logger.debug(f"  - Angle to red: {angle_to_red[i]:.1f}°")
-        logger.debug(f"  - Is red: {is_red[i]}")
-        logger.debug(f"  - Red saturation: {red_saturation[i]:.2f}")
-        logger.debug(f"  - Blue bonus: {blue_bonus[i]:.2f}")
-    
-    # New weight formula: no size influence, just color properties
-    weights = (1 + brightness * 2.0)
-    # Boost red colors that are saturated or give blue bonus
-    weights = np.where(is_red, weights * (1 + red_saturation * 2.0), weights * (1 + blue_bonus * 2.0))
+    # Calculate weights based on brightness and cluster size
+    cluster_size_weight = np.power(counts / np.sum(counts), 2)  # Normalize and square
+    brightness_weight = (1 + brightness * 2.0)
+    weights = brightness_weight * cluster_size_weight
     
     logger.debug("Final weights for each cluster:")
     for i in range(len(weights)):
+        percentage = (counts[i]/total_pixels)*100
         logger.debug(f"Cluster {i+1} weight components:")
-        logger.debug(f"  - Brightness bonus: {1 + brightness[i] * 2.0:.2f}")
-        logger.debug(f"  - Color bonus: {'red' if is_red[i] else 'blue'} ({weights[i]/(1 + brightness[i] * 2.0):.2f}x)")
+        logger.debug(f"  - Size: {percentage:.1f}% (weight: {cluster_size_weight[i]:.3f})")
+        logger.debug(f"  - Brightness bonus: {brightness_weight[i]:.2f}")
         logger.debug(f"  - Final weight: {weights[i]:.2f}")
     
     dominant_idx = np.argmax(weights)
