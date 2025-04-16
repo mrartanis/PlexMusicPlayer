@@ -37,8 +37,7 @@ class MainWindow(QMainWindow):
         # Setup initial UI showing connection status
         self.setup_ui(show_connect_only=True)
         
-        self.setMinimumSize(300, 700)
-        self.setMaximumSize(450, 900)
+        self.setMinimumSize(300, 700)  # Минимальные размеры чтобы UI не ломался
     
     @pyqtSlot(object)
     def on_player_ready(self, player):
