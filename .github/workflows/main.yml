@@ -154,6 +154,30 @@ jobs:
             
             return changelog;
 
+   create-release:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # … предыдущие шаги … #
+
+      - name: Download macOS x86_64 ZIP without unpacking
+        uses: dawidd6/action-download-artifact@v9
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          name: PlexMusicPlayer_macos_x86_64
+          skip_unpack: true   # <— не распаковываем, скачиваем raw .zip  [oai_citation_attribution:0‡GitHub](https://github.com/dawidd6/action-download-artifact)
+          path: artifacts
+
+      - name: Download macOS arm64 ZIP without unpacking
+        uses: dawidd6/action-download-artifact@v9
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          name: PlexMusicPlayer_macos_arm64
+          skip_unpack: true
+          path: artifacts
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -161,18 +185,19 @@ jobs:
           name: Release v${{ github.event.inputs.version }}
           body: |
             PlexMusicPlayer v${{ github.event.inputs.version }}
-            
+
             ## Changes
             ${{ steps.changelog.outputs.result }}
-            
+
             ## Downloads
             - Linux (x86_64)
             - Windows (x86-64)
             - macOS (x86_64, arm64)
           files: |
             artifacts/PlexMusicPlayer_linux_x86_64/PlexMusicPlayer_linux_x86_64
-            artifacts/PlexMusicPlayer_windows_x86-64/PlexMusicPlayer_windows_x86-64.exe
-            artifacts/PlexMusicPlayer_macos_x86_64/Plex Music Player.app
-            artifacts/PlexMusicPlayer_macos_arm64/Plex Music Player.app
+            artifacts/PlexMusicPlayer_windows_x86-64/PlexMusicPlayer_windows-x86-64.exe
+            artifacts/PlexMusicPlayer_macos_x86_64.zip
+            artifacts/PlexMusicPlayer_macos_arm64.zip
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
