@@ -109,7 +109,7 @@ jobs:
         uses: dawidd6/action-download-artifact@v9
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          name: PlexMusicPlayer_windows-x86-64
+          name: PlexMusicPlayer_windows_x86-64
           skip_unpack: true
           path: artifacts
       - name: Download macOS x86_64 ZIP without unpacking
