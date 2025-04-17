@@ -647,6 +647,12 @@ class Player(QObject):
     def _on_error_occurred(self, error: QMediaPlayer.Error, error_string: str) -> None:
         """Handle media player errors."""
         logger.error(f"Media player error: {error}, {error_string}")
+        logger.error(f"Current track: {self.current_track.title if self.current_track else 'None'}")
+        logger.error(f"Current player state: {self._player.playbackState() if self._player else 'No player'}")
+        logger.error(f"Current position: {self._player.position() if self._player else 'No player'}")
+        logger.error(f"Current duration: {self._player.duration() if self._player else 'No player'}")
+        logger.error(f"Media status: {self._player.mediaStatus() if self._player else 'No player'}")
+        
         if error != QMediaPlayer.Error.NoError:
             if error == QMediaPlayer.Error.NetworkError:
                 logger.debug("Network error occurred, attempting to recover...")
@@ -771,19 +777,52 @@ class Player(QObject):
     @pyqtSlot()
     def _toggle_play_impl(self) -> None:
         """Internal implementation of toggle play/pause."""
+        logger.debug("=== Starting _toggle_play_impl ===")
         if self._player is None:
             logger.error("Player not initialized!")
             return
         
+        logger.debug(f"Current player state: {self._player.playbackState()}")
+        logger.debug(f"Current track: {self.current_track.title if self.current_track else 'None'}")
+        logger.debug(f"Current position: {self._player.position()}")
+        logger.debug(f"Last position: {self._last_position}")
+        
         if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            logger.debug("Player is playing, pausing...")
             self._player.pause()
             self.playback_state_changed.emit(False)
+            logger.debug("Player paused")
         else:
+            logger.debug("Player is not playing, starting playback...")
             if self._player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
+                logger.debug("Player is stopped, setting position to last position")
                 self._player.setPosition(self._last_position or 0)
+                logger.debug(f"Position set to: {self._player.position()}")
+            
+            # Проверяем, есть ли источник для воспроизведения
+            if self._player.source().isEmpty():
+                logger.error("Player source is empty, attempting to set source...")
+                if self.current_track:
+                    stream_url = self.get_stream_url()
+                    if stream_url:
+                        logger.debug(f"Setting source to: {stream_url}")
+                        self._player.setSource(QUrl(stream_url))
+                    else:
+                        logger.error("Failed to get stream URL")
+                        return
+                else:
+                    logger.error("No current track available")
+                    return
+            
+            logger.debug("Starting playback...")
             self._player.play()
+            logger.debug(f"Player state after play: {self._player.playbackState()}")
             self.playback_state_changed.emit(True)
+            logger.debug("Playback state changed signal emitted")
+        
+        logger.debug("Scheduling media center update")
         QTimer.singleShot(100, self._update_media_center)
+        logger.debug("=== Finished _toggle_play_impl ===")
 
     @pyqtSlot()
     def _stop_impl(self) -> None:

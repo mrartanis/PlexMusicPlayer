@@ -656,6 +656,7 @@ class MainWindow(QMainWindow):
     def toggle_play(self) -> None:
         """Toggle play/pause state. If no track is loaded but a playlist exists,
         start playing the first track and update the UI (including loading the cover)."""
+        logger.debug("=== Starting toggle_play in MainWindow ===")
         logger.debug(f"Current state: {self.player._player.playbackState() if self.player._player else 'No player'}")
         logger.debug(f"Current track: {self.player.current_track.title if self.player.current_track else 'None'}")
         logger.debug(f"Current index: {self.player.current_playlist_index}")
@@ -684,9 +685,13 @@ class MainWindow(QMainWindow):
         else:
             # If track is already loaded, just toggle play/pause
             logger.debug("Toggling existing playback")
-            self.player.toggle_play()
+            logger.debug("Emitting toggle_play signal")
+            result = self.player.toggle_play()
+            logger.debug(f"Toggle play result: {result}")
         
+        logger.debug("Updating playback UI")
         self.update_playback_ui()
+        logger.debug("=== Finished toggle_play in MainWindow ===")
 
 
     def seek_position(self, position: int) -> None:
