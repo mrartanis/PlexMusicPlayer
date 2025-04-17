@@ -119,6 +119,10 @@ jobs:
           ls -la artifacts/PlexMusicPlayer_macos_arm64/
           echo "=== Finding .app files ==="
           find artifacts -name "*.app" -type d
+          echo "=== Current working directory ==="
+          pwd
+          echo "=== Directory tree ==="
+          tree artifacts/
 
       - name: Generate Changelog
         id: changelog
@@ -165,10 +169,10 @@ jobs:
             - Linux (x86_64)
             - Windows (x86-64)
             - macOS (x86_64, arm64)
-          files: |
+          files: >-
             artifacts/PlexMusicPlayer_linux_x86_64/PlexMusicPlayer_linux_x86_64
             artifacts/PlexMusicPlayer_windows_x86-64/PlexMusicPlayer_windows_x86-64.exe
-            artifacts/PlexMusicPlayer_macos_x86_64/Plex\ Music\ Player.app
-            artifacts/PlexMusicPlayer_macos_arm64/Plex\ Music\ Player.app
+            artifacts/PlexMusicPlayer_macos_x86_64/Plex Music Player.app
+            artifacts/PlexMusicPlayer_macos_arm64/Plex Music Player.app
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
