@@ -109,6 +109,17 @@ jobs:
         with:
           path: artifacts
 
+      - name: Debug directory structure
+        run: |
+          echo "=== Listing artifacts directory ==="
+          ls -la artifacts/
+          echo "=== Listing macOS x86_64 directory ==="
+          ls -la artifacts/PlexMusicPlayer_macos_x86_64/
+          echo "=== Listing macOS arm64 directory ==="
+          ls -la artifacts/PlexMusicPlayer_macos_arm64/
+          echo "=== Finding .app files ==="
+          find artifacts -name "*.app" -type d
+
       - name: Generate Changelog
         id: changelog
         uses: actions/github-script@v7
