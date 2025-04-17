@@ -144,7 +144,7 @@ jobs:
         with:
           tag_name: v${{ github.event.inputs.version }}
           name: Release v${{ github.event.inputs.version }}
-          body: |
+          body: >-
             PlexMusicPlayer v${{ github.event.inputs.version }}
             
             ## Changes
@@ -155,9 +155,9 @@ jobs:
             - Windows (x86-64)
             - macOS (x86_64, arm64)
           files: |
-            artifacts/PlexMusicPlayer_linux_x86_64.zip
-            artifacts/PlexMusicPlayer_windows_x86-64.zip
-            artifacts/PlexMusicPlayer_macos_x86_64.zip
-            artifacts/PlexMusicPlayer_macos_arm64.zip
+            artifacts/PlexMusicPlayer_linux_x86_64/PlexMusicPlayer_linux_x86_64
+            artifacts/PlexMusicPlayer_windows_x86-64/PlexMusicPlayer_windows_x86-64.exe
+            artifacts/PlexMusicPlayer_macos_x86_64/Plex\ Music\ Player.app
+            artifacts/PlexMusicPlayer_macos_arm64/Plex\ Music\ Player.app
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
