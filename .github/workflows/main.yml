@@ -2,6 +2,11 @@ name: Build PlexMusicPlayer
 
 on:
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g. 1.0.0)'
+        required: true
+        type: string
 
 jobs:
   build-linux:
@@ -92,3 +97,34 @@ jobs:
         with:
           name: PlexMusicPlayer_macos_${{ matrix.arch }}
           path: PlexMusicPlayer_macos_${{ matrix.arch }}
+
+  create-release:
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.event.inputs.version }}
+          name: Release v${{ github.event.inputs.version }}
+          body: |
+            PlexMusicPlayer v${{ github.event.inputs.version }}
+            
+            This release contains builds for:
+            - Linux (x86_64)
+            - Windows (x86-64)
+            - macOS (x86_64, arm64)
+          files: |
+            artifacts/PlexMusicPlayer_linux_x86_64
+            artifacts/PlexMusicPlayer_windows_x86-64.exe
+            artifacts/PlexMusicPlayer_macos_x86_64/*
+            artifacts/PlexMusicPlayer_macos_arm64/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
