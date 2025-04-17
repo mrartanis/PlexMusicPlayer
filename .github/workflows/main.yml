@@ -13,23 +13,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pyinstaller
-
       - name: Build Linux binary
         run: |
-          pyinstaller -F --add-data "MusicApp.iconset/icon_256x256.png:icon" plex_music_player/__main__.py
+          pyinstaller -F \
+            --add-data "MusicApp.iconset/icon_256x256.png:icon" \
+            plex_music_player/__main__.py
           mv dist/__main__ PlexMusicPlayer_linux_x86_64
-
       - name: Upload Linux binary
         uses: actions/upload-artifact@v4
         with:
@@ -40,22 +38,21 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
       - name: Build Windows binary
         run: |
-          pyinstaller -i icon_win.ico -F --add-data "MusicApp.iconset/icon_256x256.png;icon" --windowed .\plex_music_player\__main__.py
-          Move-Item -Path dist\__main__.exe -Destination PlexMusicPlayer_windows_x86-64.exe
-
+          pyinstaller -i icon_win.ico -F \
+            --add-data "MusicApp.iconset/icon_256x256.png;icon" \
+            --windowed .\plex_music_player\__main__.py
+          Move-Item -Path dist\__main__.exe \
+            -Destination PlexMusicPlayer_windows_x86-64.exe
       - name: Upload Windows binary
         uses: actions/upload-artifact@v4
         with:
@@ -71,105 +68,59 @@ jobs:
             runs-on: macos-13
           - arch: arm64
             runs-on: macos-14
-
     runs-on: ${{ matrix.runs-on }}
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-
       - name: Build macOS app
         run: |
           python setup.py py2app
           mv dist PlexMusicPlayer_macos_${{ matrix.arch }}
-
-      - name: Upload macOS app
+      - name: Zip macOS app
+        run: |
+          cd PlexMusicPlayer_macos_${{ matrix.arch }}
+          zip -r ../PlexMusicPlayer_macos_${{ matrix.arch }}.zip \
+            "Plex Music Player.app"
+          cd ..
+      - name: Upload macOS ZIP
         uses: actions/upload-artifact@v4
         with:
           name: PlexMusicPlayer_macos_${{ matrix.arch }}
-          path: PlexMusicPlayer_macos_${{ matrix.arch }}
+          path: PlexMusicPlayer_macos_${{ matrix.arch }}.zip
 
   create-release:
-    needs: [build-linux, build-windows, build-macos]
+    needs:
+      - build-linux
+      - build-windows
+      - build-macos
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
+      - name: Download Linux binary
         uses: actions/download-artifact@v4
         with:
+          name: PlexMusicPlayer_linux_x86_64
           path: artifacts
-
-      - name: Debug directory structure
-        run: |
-          echo "=== Listing artifacts directory ==="
-          ls -la artifacts/
-          echo "=== Listing macOS x86_64 directory ==="
-          ls -la artifacts/PlexMusicPlayer_macos_x86_64/
-          echo "=== Listing macOS arm64 directory ==="
-          ls -la artifacts/PlexMusicPlayer_macos_arm64/
-          echo "=== Finding .app files ==="
-          find artifacts -name "*.app" -type d
-          echo "=== Current working directory ==="
-          pwd
-          echo "=== Directory tree ==="
-          tree artifacts/
-
-      - name: Generate Changelog
-        id: changelog
-        uses: actions/github-script@v7
+      - name: Download Windows binary
+        uses: actions/download-artifact@v4
         with:
-          script: |
-            // Get the latest release
-            const { data: releases } = await github.rest.repos.listReleases({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 1
-            });
-            
-            const previousTag = releases.length > 0 ? releases[0].tag_name : 'initial';
-            
-            // Get commits between current and previous release
-            const { data: commits } = await github.rest.repos.compareCommits({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              base: previousTag,
-              head: context.sha
-            });
-            
-            const changelog = commits.commits.map(commit => {
-              const message = commit.commit.message.split('\n')[0];
-              const author = commit.commit.author.name;
-              return `- ${message} (by ${author})`;
-            }).join('\n');
-            
-            return changelog;
-
-   create-release:
-    needs: [build-linux, build-windows, build-macos]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      # … предыдущие шаги … #
-
+          name: PlexMusicPlayer_windows_x86-64
+          path: artifacts
       - name: Download macOS x86_64 ZIP without unpacking
         uses: dawidd6/action-download-artifact@v9
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           name: PlexMusicPlayer_macos_x86_64
-          skip_unpack: true   # <— не распаковываем, скачиваем raw .zip  [oai_citation_attribution:0‡GitHub](https://github.com/dawidd6/action-download-artifact)
+          skip_unpack: true
           path: artifacts
-
       - name: Download macOS arm64 ZIP without unpacking
         uses: dawidd6/action-download-artifact@v9
         with:
@@ -177,7 +128,28 @@ jobs:
           name: PlexMusicPlayer_macos_arm64
           skip_unpack: true
           path: artifacts
-
+      - name: Generate Changelog
+        id: changelog
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: releases } = await github.rest.repos.listReleases({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 1
+            });
+            const previousTag = releases.length
+              ? releases[0].tag_name
+              : 'initial';
+            const { data: commits } = await github.rest.repos.compareCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base: previousTag,
+              head: context.sha
+            });
+            return commits.commits
+              .map(c => `- ${c.commit.message.split('\n')[0]} (by ${c.commit.author.name})`)
+              .join('\n');
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
