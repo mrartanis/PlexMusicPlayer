@@ -132,7 +132,9 @@ jobs:
             });
             
             const changelog = commits.commits.map(commit => {
-              return `- ${commit.commit.message.split('\n')[0]}`;
+              const message = commit.commit.message.split('\n')[0];
+              const author = commit.commit.author.name;
+              return `- ${message} (by ${author})`;
             }).join('\n');
             
             return changelog;
@@ -153,9 +155,9 @@ jobs:
             - Windows (x86-64)
             - macOS (x86_64, arm64)
           files: |
-            artifacts/PlexMusicPlayer_linux_x86_64/PlexMusicPlayer_linux_x86_64
-            artifacts/PlexMusicPlayer_windows_x86-64/PlexMusicPlayer_windows_x86-64.exe
-            artifacts/PlexMusicPlayer_macos_x86_64/PlexMusicPlayer.app
-            artifacts/PlexMusicPlayer_macos_arm64/PlexMusicPlayer.app
+            artifacts/PlexMusicPlayer_linux_x86_64.zip
+            artifacts/PlexMusicPlayer_windows_x86-64.zip
+            artifacts/PlexMusicPlayer_macos_x86_64.zip
+            artifacts/PlexMusicPlayer_macos_arm64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
