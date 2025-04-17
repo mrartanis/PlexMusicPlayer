@@ -98,15 +98,19 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download Linux binary
-        uses: actions/download-artifact@v4
+      - name: Download Linux ZIP
+        uses: dawidd6/action-download-artifact@v9
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           name: PlexMusicPlayer_linux_x86_64
+          skip_unpack: true
           path: artifacts
-      - name: Download Windows binary
-        uses: actions/download-artifact@v4
+      - name: Download Windows ZIP
+        uses: dawidd6/action-download-artifact@v9
         with:
-          name: PlexMusicPlayer_windows_x86-64
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          name: PlexMusicPlayer_windows-x86-64
+          skip_unpack: true
           path: artifacts
       - name: Download macOS x86_64 ZIP without unpacking
         uses: dawidd6/action-download-artifact@v9
@@ -160,8 +164,8 @@ jobs:
             - Windows (x86-64)
             - macOS (x86_64, arm64)
           files: |
-            artifacts/PlexMusicPlayer_linux_x86_64/PlexMusicPlayer_linux_x86_64
-            artifacts/PlexMusicPlayer_windows_x86-64/PlexMusicPlayer_windows-x86-64.exe
+            artifacts/PlexMusicPlayer_linux_x86_64.zip
+            artifacts/PlexMusicPlayer_windows_x86-64.zip
             artifacts/PlexMusicPlayer_macos_x86_64.zip
             artifacts/PlexMusicPlayer_macos_arm64.zip
         env:
