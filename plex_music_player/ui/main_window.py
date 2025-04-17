@@ -790,21 +790,19 @@ class MainWindow(QMainWindow):
                 logger.debug(f"Index valid, current playlist length: {len(self.player.playlist)}")
                 logger.debug(f"Current player state: {self.player._player.playbackState() if self.player._player else 'No player'}")
                 
-                # Stop current playback first
-                if self.player._player:
-                    logger.debug("Stopping current playback")
-                    self.player._player.stop()
-                    # Wait for the player to actually stop
-                    time.sleep(0.1)  # Small delay to ensure stop completes
-                    logger.debug(f"Player state after stop: {self.player._player.playbackState()}")
+                # Save current index
+                old_index = self.player.current_playlist_index
                 
-                # Set current track and index
-                logger.debug(f"Setting new track index to {index}")
+                # Set new index
                 self.player.current_playlist_index = index
                 self.player.current_track = self.player.playlist[index]
                 logger.debug(f"New track set: {self.player.current_track.title if self.player.current_track else 'None'}")
                 
-                # Play the track
+                if not self.player._recreate_player():
+                    logger.error("Failed to recreate player")
+                    return
+                
+                # Start playback
                 logger.debug("Attempting to play track")
                 if self.player._play_track_impl():
                     logger.debug("Track started successfully")
