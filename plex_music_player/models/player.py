@@ -65,7 +65,7 @@ class SavedTrack:
             if not parts:
                 return None
                 
-            if container in ['mp3', 'flac']:
+            if container.lower() in ["mp3", "flac", "aac"]:
                 # Handle both dictionary and object part formats
                 if isinstance(parts[0], dict):
                     media_key = parts[0].get('key')
