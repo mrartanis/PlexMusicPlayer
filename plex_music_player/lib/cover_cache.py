@@ -4,7 +4,7 @@ from PyQt6.QtGui import QImage, QPixmap
 import sys
 from .logger import Logger
 
-if "darwin" in sys.platfrom:
+if "darwin" in sys.platform:
     from AppKit import NSImage
 else:
     NSImage = None
