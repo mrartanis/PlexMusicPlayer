@@ -1,9 +1,13 @@
 from typing import Dict, Optional, Tuple
 import requests
 from PyQt6.QtGui import QImage, QPixmap
-from AppKit import NSImage
 import sys
 from .logger import Logger
+
+if "darwin" in sys.platfrom:
+    from AppKit import NSImage
+else:
+    NSImage = None
 
 logger = Logger()
 
