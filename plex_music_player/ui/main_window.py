@@ -460,19 +460,19 @@ class MainWindow(QMainWindow):
         buttons_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         buttons_layout.setSpacing(10)
 
-        self.prev_button = QPushButton("⏮")
+        self.prev_button = QPushButton("\u23EE")
         self.prev_button.setEnabled(False)
         self.prev_button.setFixedSize(40, 40)
         self.prev_button.clicked.connect(self.play_previous_track)
         buttons_layout.addWidget(self.prev_button)
 
-        self.play_button = QPushButton("▶")
+        self.play_button = QPushButton("\u25B6")
         self.play_button.setEnabled(False)
         self.play_button.setFixedSize(40, 40)
         self.play_button.clicked.connect(self.toggle_play)
         buttons_layout.addWidget(self.play_button)
 
-        self.next_button = QPushButton("⏭")
+        self.next_button = QPushButton("\u23ED")
         self.next_button.setEnabled(False)
         self.next_button.setFixedSize(40, 40)
         self.next_button.clicked.connect(self.play_next_track)
@@ -506,7 +506,7 @@ class MainWindow(QMainWindow):
     def update_playback_ui(self) -> None:
         """Updates playback UI elements."""
         # Update play/pause icon according to player's state.
-        self.play_button.setText("⏸" if self.player.is_playing() else "▶")
+        self.play_button.setText("\u23F8" if self.player.is_playing() else "\u25B6")
         self.progress_slider.setEnabled(True)
         self.progress_slider.setMaximum(self.player.current_track.duration)
         self.progress_slider.setValue(0)
