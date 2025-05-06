@@ -48,7 +48,7 @@ class SavedTrack:
         self.thumb = None  # Album cover URL
         self._server = None  # Plex server reference
 
-    def getStreamURL(self, audioFormat: str = 'mp3') -> str:
+    def getStreamURL(self) -> str:
         """Get stream URL for the track."""
         if not self.media:
             return None
@@ -65,23 +65,20 @@ class SavedTrack:
             if not parts:
                 return None
                 
-            if container.lower() in ["mp3", "flac", "aac"]:
-                # Handle both dictionary and object part formats
-                if isinstance(parts[0], dict):
-                    media_key = parts[0].get('key')
-                else:
-                    media_key = parts[0].key
-                    
-                if not self._server:
-                    return None
-                    
-                token = self._server._token
-                base_url = self._server.url(media_key)
+            # Handle both dictionary and object part formats
+            if isinstance(parts[0], dict):
+                media_key = parts[0].get('key')
+            else:
+                media_key = parts[0].key
                 
-                # Просто возвращаем URL без проверок
-                return f"{base_url}?download=1&X-Plex-Token={token}"
+            if not self._server:
+                return None
                 
-            return None
+            token = self._server._token
+            base_url = self._server.url(media_key)
+            
+            return f"{base_url}?download=1&X-Plex-Token={token}"
+                
         except Exception as e:
             logger.error(f"Error in getStreamURL: {e}")
             return None
