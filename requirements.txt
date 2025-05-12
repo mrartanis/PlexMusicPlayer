@@ -1,6 +1,6 @@
 PyQt6>=6.4.0
 plexapi>=4.15.0
-requests
+requests>=2.31.0
 setuptools
 numpy>=1.20.0
 scikit-learn>=1.0.0

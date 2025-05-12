@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QIcon, QImage
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
 from plex_music_player.models.player import PlayerThread
-from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog
+from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog, LastFMSettingsDialog
 from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image, pyintaller_resource_path
 from plex_music_player.lib.color_utils import get_dominant_color, get_contrasting_text_color, adjust_color_brightness
 from plex_music_player.lib.logger import Logger
@@ -51,6 +51,7 @@ class MainWindow(QMainWindow):
         self.player.track_changed.connect(self.update_playback_ui)
         self.player.track_changed.connect(self.update_playlist_selection)
         self.player.tracks_batch_loaded.connect(self.on_tracks_batch_loaded)
+        self.player.lastfm_status_changed.connect(self._on_lastfm_status_changed)
         
         # Attempt auto-connect using saved configuration
         try:
@@ -425,6 +426,13 @@ class MainWindow(QMainWindow):
         self.scroll_to_current_button.clicked.connect(self.scroll_to_current_track)
         playlist_header.addWidget(self.scroll_to_current_button)
         
+        self.lastfm_settings = QPushButton("⚙")
+        self.lastfm_settings.setToolTip("Last.fm Settings")
+        self.lastfm_settings.setFixedSize(30, 30)
+        self.lastfm_settings.setStyleSheet(self.get_button_style())
+        self.lastfm_settings.clicked.connect(self.show_lastfm_settings)
+        playlist_header.addWidget(self.lastfm_settings)
+        
         playlist_layout.addLayout(playlist_header)
         
         # Playlist list
@@ -480,7 +488,7 @@ class MainWindow(QMainWindow):
 
         controls_layout.addLayout(buttons_layout)
 
-        # Volume slider
+        # Volume slider at the bottom
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setRange(0, 100)
         self.volume_slider.setValue(100)
@@ -1142,3 +1150,27 @@ class MainWindow(QMainWindow):
                 background-color: #3d3d3d;
             }
         """)
+
+    def _on_lastfm_status_changed(self, enabled: bool) -> None:
+        """Update Last.fm status indicator."""
+        if enabled:
+            self.lastfm_status.setStyleSheet("""
+                QLabel {
+                    color: #1DB954;
+                    font-size: 16px;
+                    padding: 0 5px;
+                }
+            """)
+        else:
+            self.lastfm_status.setStyleSheet("""
+                QLabel {
+                    color: #666666;
+                    font-size: 16px;
+                    padding: 0 5px;
+                }
+            """)
+
+    def show_lastfm_settings(self) -> None:
+        """Show Last.fm settings dialog."""
+        dialog = LastFMSettingsDialog(self.player, self)
+        dialog.exec()

@@ -10,13 +10,15 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QMessageBox,
     QListWidget,
+    QCheckBox,
 )
 from plexapi.server import PlexServer
 from plexapi.audio import Track
 from plexapi.exceptions import Unauthorized, NotFound
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
 from ..models.player import TrackLoader, ArtistLoader
 from ..lib.logger import Logger
+from plex_music_player.lib.lastfm_auth_server import LastFMAuthServer, open_auth_url
 
 logger = Logger()
 
@@ -387,4 +389,161 @@ class AddTracksDialog(QDialog):
                 logger.debug("All remaining tracks have been sent to player")
                 self.tracks_batch = []
         except Exception as e:
-            logger.error(f"Error adding remaining tracks: {str(e)}") 
+            logger.error(f"Error adding remaining tracks: {str(e)}")
+
+
+class LastFMAuthCallback(QObject):
+    token_received = pyqtSignal(str)
+
+class LastFMSettingsDialog(QDialog):
+    def __init__(self, player, parent=None):
+        super().__init__(parent)
+        self.player = player
+        self.auth_server = None
+        self.auth_callback = LastFMAuthCallback()
+        self.auth_callback.token_received.connect(self.handle_auth_callback)
+        self.setup_ui()
+        self.load_settings()
+
+    def setup_ui(self):
+        self.setWindowTitle("Last.fm Settings")
+        layout = QVBoxLayout(self)
+
+        # API Key
+        api_key_layout = QHBoxLayout()
+        api_key_label = QLabel("API Key:")
+        self.api_key_edit = QLineEdit()
+        self.api_key_edit.setPlaceholderText("Enter your Last.fm API key")
+        api_key_layout.addWidget(api_key_label)
+        api_key_layout.addWidget(self.api_key_edit)
+        layout.addLayout(api_key_layout)
+
+        # API Secret
+        api_secret_layout = QHBoxLayout()
+        api_secret_label = QLabel("API Secret:")
+        self.api_secret_edit = QLineEdit()
+        self.api_secret_edit.setPlaceholderText("Enter your Last.fm API secret")
+        api_secret_layout.addWidget(api_secret_label)
+        api_secret_layout.addWidget(self.api_secret_edit)
+        layout.addLayout(api_secret_layout)
+
+        # Session Key
+        session_key_layout = QHBoxLayout()
+        session_key_label = QLabel("Session Key:")
+        self.session_key_edit = QLineEdit()
+        self.session_key_edit.setPlaceholderText("Will be obtained automatically")
+        self.session_key_edit.setReadOnly(True)
+        session_key_layout.addWidget(session_key_label)
+        session_key_layout.addWidget(self.session_key_edit)
+        layout.addLayout(session_key_layout)
+
+        # Enable scrobbling checkbox
+        self.scrobble_checkbox = QCheckBox("Enable scrobbling")
+        layout.addWidget(self.scrobble_checkbox)
+
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        self.auth_button = QPushButton("Authorize")
+        self.auth_button.clicked.connect(self.start_auth)
+        buttons_layout.addWidget(self.auth_button)
+        self.save_button = QPushButton("Save")
+        self.save_button.clicked.connect(self.save_settings)
+        buttons_layout.addWidget(self.save_button)
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)
+        buttons_layout.addWidget(self.cancel_button)
+        layout.addLayout(buttons_layout)
+
+    def load_settings(self):
+        config = self.player.load_config()
+        if config and "lastfm" in config:
+            lastfm_config = config["lastfm"]
+            self.api_key_edit.setText(lastfm_config.get("api_key", ""))
+            self.api_secret_edit.setText(lastfm_config.get("api_secret", ""))
+            self.session_key_edit.setText(lastfm_config.get("session_key", ""))
+            self.scrobble_checkbox.setChecked(lastfm_config.get("enabled", False))
+
+    def save_settings(self):
+        logger.debug("Saving Last.fm settings")
+        api_key = self.api_key_edit.text().strip()
+        api_secret = self.api_secret_edit.text().strip()
+        session_key = self.session_key_edit.text().strip()
+        enabled = self.scrobble_checkbox.isChecked()
+
+        if not api_key or not api_secret:
+            logger.error("Missing API Key or API Secret")
+            QMessageBox.warning(self, "Error", "API Key and API Secret are required")
+            return
+
+        if not session_key:
+            logger.error("Missing Session Key")
+            QMessageBox.warning(self, "Error", "Please authorize your Last.fm account first")
+            return
+
+        logger.debug("Loading current config")
+        # Update Last.fm configuration in the player
+        logger.debug("Updating Last.fm configuration in player")
+        self.player.lastfm.api_key = api_key
+        self.player.lastfm.api_secret = api_secret
+        self.player.lastfm.session_key = session_key
+        self.player.lastfm.enabled = enabled
+        
+        logger.debug("Saving config")
+        self.player.save_config()
+        
+        logger.debug("Settings saved successfully")
+        self.accept()
+
+    def start_auth(self):
+        api_key = self.api_key_edit.text().strip()
+        if not api_key:
+            QMessageBox.warning(self, "Error", "Please enter your Last.fm API Key first")
+            return
+
+        # Start the auth server
+        self.auth_server = LastFMAuthServer(self.auth_callback.token_received.emit)
+        try:
+            self.auth_server.start()
+            # Open the auth URL in the browser with the correct port
+            open_auth_url(api_key, self.auth_server.port)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to start auth server: {str(e)}")
+            if self.auth_server:
+                self.auth_server.stop()
+                self.auth_server = None
+
+    def handle_auth_callback(self, token: str):
+        logger.debug(f"Handling auth callback with token: {token}")
+        # Stop the auth server
+        if self.auth_server:
+            logger.debug("Stopping auth server")
+            self.auth_server.stop()
+            self.auth_server = None
+
+        # Ensure scrobbler has up-to-date API key and secret
+        self.player.lastfm.api_key = self.api_key_edit.text().strip()
+        self.player.lastfm.api_secret = self.api_secret_edit.text().strip()
+
+        # Get session key using the token
+        try:
+            logger.debug("Getting session key from Last.fm")
+            session_key = self.player.lastfm.get_session_key(token)
+            if session_key:
+                logger.debug(f"Got session key: {session_key}")
+                self.session_key_edit.setText(session_key)
+                # Auto-save settings after successful authorization
+                logger.debug("Auto-saving settings")
+                self.save_settings()
+                QMessageBox.information(self, "Success", "Successfully authorized with Last.fm")
+            else:
+                logger.error("Failed to get session key - empty response")
+                QMessageBox.warning(self, "Error", "Failed to get session key")
+        except Exception as e:
+            logger.error(f"Error getting session key: {e}")
+            QMessageBox.warning(self, "Error", f"Failed to get session key: {str(e)}")
+
+    def closeEvent(self, event):
+        # Stop the auth server if it's running
+        if self.auth_server:
+            self.auth_server.stop()
+        super().closeEvent(event) 

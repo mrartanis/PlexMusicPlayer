@@ -16,6 +16,7 @@ import random
 import sys
 from plex_music_player.lib.media_center import get_media_center
 from plex_music_player.lib.logger import Logger
+from plex_music_player.lib.lastfm import LastFMScrobbler
 
 logger = Logger()
 
@@ -302,6 +303,7 @@ class Player(QObject):
     player_ready = pyqtSignal()  # Signal emitted when player is ready for playback
     playback_started = pyqtSignal()  # Signal emitted when playback actually starts
     playback_failed = pyqtSignal(str)  # Signal emitted when playback fails
+    lastfm_status_changed = pyqtSignal(bool)  # Signal for Last.fm status changes
     
     # New signals for thread-safe operations
     play_next_track_signal = pyqtSignal()
@@ -354,6 +356,12 @@ class Player(QObject):
         # Add media status tracking
         self._media_loaded = False
         self._playback_error = False
+
+        # Initialize Last.fm scrobbler
+        self.lastfm = LastFMScrobbler()
+        
+        # Load Last.fm configuration
+        self._load_lastfm_config()
 
         # Connect signals to slots
         self.play_next_track_signal.connect(self._play_next_track_impl, Qt.ConnectionType.QueuedConnection)
@@ -636,6 +644,7 @@ class Player(QObject):
             self._last_position = position
             if position % 1000 == 0:
                 QTimer.singleShot(0, self._update_media_center)
+        self.lastfm.update_playback_progress(position)
 
     def _on_duration_changed(self, duration: int) -> None:
         """Handle duration changes."""
@@ -892,6 +901,9 @@ class Player(QObject):
             self._player.play()
             logger.debug(f"Current player state after play: {self._player.playbackState()}")
             
+            if self.current_track:
+                self.lastfm.update_now_playing(self.current_track)
+            
             return True
             
         except Exception as e:
@@ -952,7 +964,17 @@ class Player(QObject):
                 'rating_key': self.current_artist.ratingKey if hasattr(self.current_artist, 'ratingKey') else None
             }
             logger.debug(f"Current artist data: {config_data['current_artist']}")
-            
+        
+        # Save Last.fm config if present
+        if self.lastfm and (self.lastfm.api_key or self.lastfm.api_secret or self.lastfm.session_key):
+            config_data['lastfm'] = {
+                'api_key': self.lastfm.api_key,
+                'api_secret': self.lastfm.api_secret,
+                'session_key': self.lastfm.session_key,
+                'enabled': self.lastfm.enabled,
+                'username': self.lastfm.username
+            }
+        
         logger.debug(f"Final config data: {config_data}")
         return config_data
 
@@ -1650,6 +1672,9 @@ class Player(QObject):
             # Save configuration
             self.save_config()
             
+            # Clear Last.fm state
+            self.lastfm.clear_now_playing()
+            
             logger.debug("Player closed successfully")
         except Exception as e:
             logger.error(f"Error during player cleanup: {e}")
@@ -1714,6 +1739,50 @@ class Player(QObject):
             logger.error(f"ERROR in _recreate_player: {e}")
             logger.error(f"Stack trace: {traceback.format_exc()}")
             return False
+
+    def _load_lastfm_config(self) -> None:
+        """Load Last.fm configuration from settings."""
+        config = self.load_config()
+        if config and "lastfm" in config:
+            lastfm_config = config["lastfm"]
+            self.lastfm.configure(
+                api_key=lastfm_config.get("api_key", ""),
+                api_secret=lastfm_config.get("api_secret", ""),
+                username=lastfm_config.get("username", ""),
+                session_key=lastfm_config.get("session_key", ""),
+                enabled=lastfm_config.get("enabled", False)
+            )
+            self.lastfm_status_changed.emit(self.lastfm.enabled)
+    
+    def _save_lastfm_config(self) -> None:
+        """Save Last.fm configuration to settings."""
+        config = self.load_config()
+        if not config:
+            config = {}
+            
+        config["lastfm"] = {
+            "api_key": self.lastfm.api_key,
+            "api_secret": self.lastfm.api_secret,
+            "username": self.lastfm.username,
+            "session_key": self.lastfm.session_key,
+            "enabled": self.lastfm.enabled
+        }
+        
+        self.save_config()
+    
+    @pyqtSlot(bool)
+    def enable_lastfm_scrobbling(self, enabled: bool) -> None:
+        """Enable or disable Last.fm scrobbling."""
+        if enabled and not self.lastfm.is_configured():
+            # Show settings dialog if configuration is missing
+            from plex_music_player.ui.dialogs import LastFMSettingsDialog
+            dialog = LastFMSettingsDialog(self)
+            if dialog.exec_() != QDialog.Accepted:
+                return  # User cancelled, don't enable scrobbling
+        
+        self.lastfm.enabled = enabled
+        self.lastfm_status_changed.emit(enabled)
+        self._save_lastfm_config()
 
 class PlayerThread(QThread):
     player_ready = pyqtSignal(object)  # Signal to notify that the player is ready
