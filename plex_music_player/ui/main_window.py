@@ -620,7 +620,7 @@ class MainWindow(QMainWindow):
                         background-color: {darker_color_str};
                     }}
                 """
-                for btn in [self.add_button, self.shuffle_button, self.remove_button, self.clear_button, self.scroll_to_current_button]:
+                for btn in [self.add_button, self.shuffle_button, self.remove_button, self.clear_button, self.scroll_to_current_button, self.lastfm_settings]:
                     btn.setStyleSheet(playlist_buttons_style)
                 
                 # Update slider colors
@@ -1180,6 +1180,23 @@ class MainWindow(QMainWindow):
                 border: none;
                 border-radius: 12px;
                 color: white;
+                font-size: 12px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #666666;
+            }
+        """)
+        self.lastfm_settings.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                color: white;
+                border: none;
+                border-radius: 12px;
                 font-size: 12px;
                 padding: 0px;
             }
