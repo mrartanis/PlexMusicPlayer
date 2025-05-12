@@ -297,7 +297,7 @@ class MainWindow(QMainWindow):
                 border-radius: 2px;
             }
             QListWidget::item:selected {
-                background-color: #0078d4;
+                background-color: #444444;
             }
             QListWidget::item:hover {
                 background-color: #3d3d3d;
@@ -313,14 +313,14 @@ class MainWindow(QMainWindow):
                 border-radius: 2px;
             }
             QSlider::handle:horizontal {
-                background-color: #0078d4;
+                background-color: #444444;
                 border: none;
                 width: 12px;
                 margin: -4px 0;
                 border-radius: 6px;
             }
             QSlider::sub-page:horizontal {
-                background-color: #0078d4;
+                background-color: #444444;
                 border-radius: 2px;
             }
             #track_info {
@@ -344,7 +344,7 @@ class MainWindow(QMainWindow):
                 text-align: center;
             }
             #loading_progress::chunk {
-                background-color: #0078d4;
+                background-color: #444444;
             }
         """)
 
@@ -515,6 +515,19 @@ class MainWindow(QMainWindow):
         """Updates playback UI elements."""
         # Update play/pause icon according to player's state.
         self.play_button.setText("\u23F8" if self.player.is_playing() else "\u25B6")
+        
+        if not self.player.current_track:
+            self.progress_slider.setEnabled(False)
+            self.progress_slider.setMaximum(0)
+            self.progress_slider.setValue(0)
+            self.update_time_label(0, 0)
+            self.track_info.setText("")
+            self.prev_button.setEnabled(False)
+            self.next_button.setEnabled(False)
+            self.cover_label.clear()
+            self._reset_button_styles()
+            return
+            
         self.progress_slider.setEnabled(True)
         self.progress_slider.setMaximum(self.player.current_track.duration)
         self.progress_slider.setValue(0)
@@ -756,11 +769,12 @@ class MainWindow(QMainWindow):
 
     def clear_playlist(self) -> None:
         """Clear the playlist and safely pause playback if necessary."""
-        # Pause playback if a track is currently playing
-        if self.player.is_playing():
-            self.player.toggle_play()
-        # Clear current track to avoid NoneType attribute errors
+        # Stop playback and clear player
+        if self.player._player:
+            self.player._player.stop()
+            self.player._player = None
         self.player.current_track = None
+        self.player.current_playlist_index = -1
 
         self.player.clear_playlist()
         self.playlist_list.clear()
@@ -773,6 +787,7 @@ class MainWindow(QMainWindow):
         self.cover_label.clear()
         self.prev_button.setEnabled(False)
         self.next_button.setEnabled(False)
+        self._reset_button_styles()
         self.player.save_playlist()
 
     def remove_from_playlist(self) -> None:
@@ -976,7 +991,7 @@ class MainWindow(QMainWindow):
         """Reset button styles to default."""
         self.play_button.setStyleSheet("""
             QPushButton {
-                background-color: #0078d4;
+                background-color: #444444;
                 border: none;
                 border-radius: 20px;
                 font-size: 16px;
@@ -984,16 +999,19 @@ class MainWindow(QMainWindow):
                 color: white;
             }
             QPushButton:hover {
-                background-color: #1e8ae6;
+                background-color: #555555;
             }
             QPushButton:disabled {
                 background-color: #2d2d2d;
                 color: #666666;
+            }
+            QPushButton:pressed {
+                background-color: #222222;
             }
         """)
         self.prev_button.setStyleSheet("""
             QPushButton {
-                background-color: #0078d4;
+                background-color: #444444;
                 border: none;
                 border-radius: 20px;
                 font-size: 16px;
@@ -1001,16 +1019,19 @@ class MainWindow(QMainWindow):
                 color: white;
             }
             QPushButton:hover {
-                background-color: #1e8ae6;
+                background-color: #555555;
             }
             QPushButton:disabled {
                 background-color: #2d2d2d;
                 color: #666666;
+            }
+            QPushButton:pressed {
+                background-color: #222222;
             }
         """)
         self.next_button.setStyleSheet("""
             QPushButton {
-                background-color: #0078d4;
+                background-color: #444444;
                 border: none;
                 border-radius: 20px;
                 font-size: 16px;
@@ -1018,11 +1039,14 @@ class MainWindow(QMainWindow):
                 color: white;
             }
             QPushButton:hover {
-                background-color: #1e8ae6;
+                background-color: #555555;
             }
             QPushButton:disabled {
                 background-color: #2d2d2d;
                 color: #666666;
+            }
+            QPushButton:pressed {
+                background-color: #222222;
             }
         """)
         self.add_button.setStyleSheet("""
@@ -1101,14 +1125,14 @@ class MainWindow(QMainWindow):
                 border-radius: 2px;
             }
             QSlider::handle:horizontal {
-                background-color: #0078d4;
+                background-color: #444444;
                 border: none;
                 width: 12px;
                 margin: -4px 0;
                 border-radius: 6px;
             }
             QSlider::sub-page:horizontal {
-                background-color: #0078d4;
+                background-color: #444444;
                 border-radius: 2px;
             }
         """)
@@ -1120,14 +1144,14 @@ class MainWindow(QMainWindow):
                 border-radius: 2px;
             }
             QSlider::handle:horizontal {
-                background-color: #0078d4;
+                background-color: #444444;
                 border: none;
                 width: 12px;
                 margin: -4px 0;
                 border-radius: 6px;
             }
             QSlider::sub-page:horizontal {
-                background-color: #0078d4;
+                background-color: #444444;
                 border-radius: 2px;
             }
         """)
@@ -1144,10 +1168,27 @@ class MainWindow(QMainWindow):
                 border-radius: 2px;
             }
             QListWidget::item:selected {
-                background-color: #0078d4;
+                background-color: #444444;
             }
             QListWidget::item:hover {
                 background-color: #3d3d3d;
+            }
+        """)
+        self.shuffle_button.setStyleSheet("""
+            QPushButton {
+                background-color: #2d2d2d;
+                border: none;
+                border-radius: 12px;
+                color: white;
+                font-size: 12px;
+                padding: 0px;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #666666;
             }
         """)
 

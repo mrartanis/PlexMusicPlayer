@@ -205,7 +205,7 @@ class AddTracksDialog(QDialog):
                 background-color: #3d3d3d;
             }
             #add_all_button {
-                background-color: #0078d4;
+                background-color: #444444;
                 border: none;
                 border-radius: 3px;
                 padding: 5px 10px;
@@ -214,7 +214,7 @@ class AddTracksDialog(QDialog):
                 margin-top: 5px;
             }
             #add_all_button:hover {
-                background-color: #1e8ae6;
+                background-color: #555555;
             }
             #header_label {
                 color: #ffffff;
@@ -233,7 +233,7 @@ class AddTracksDialog(QDialog):
                 border-radius: 2px;
             }
             QListWidget::item:selected {
-                background-color: #0078d4;
+                background-color: #444444;
             }
             QListWidget::item:hover {
                 background-color: #3d3d3d;

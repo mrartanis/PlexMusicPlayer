@@ -585,7 +585,13 @@ class Player(QObject):
     def _on_playback_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
         """Handle playback state changes safely."""
         logger.debug(f"State changed to: {state}")
-        logger.debug(f"Current position: {self._player.position() if self._player else 'No player'}")
+        
+        if not self._player:
+            logger.debug("No player available")
+            self.playback_state_changed.emit(False)
+            return
+            
+        logger.debug(f"Current position: {self._player.position()}")
         
         if state == QMediaPlayer.PlaybackState.StoppedState:
             current_pos = self.get_current_position()
