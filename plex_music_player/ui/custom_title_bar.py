@@ -28,15 +28,26 @@ class CustomTitleBar(QWidget):
         self.close_button = QPushButton("")
         self.min_button = QPushButton("")
         self.max_button = QPushButton("")
-        for btn in [self.close_button, self.min_button, self.max_button]:
-            btn.setFixedSize(btn_size, btn_size)
-            btn.setStyleSheet(f"background-color: transparent; border: none; border-radius: 8px; color: {button_color}; font-size: 12px;")
-        self.close_button.clicked.connect(self._on_close)
-        self.min_button.clicked.connect(self._on_minimize)
-        self.max_button.clicked.connect(self._on_maximize)
-        buttons_layout.addWidget(self.close_button)
-        buttons_layout.addWidget(self.min_button)
-        buttons_layout.addWidget(self.max_button)
+        if is_mac:
+            for btn in [self.close_button, self.min_button, self.max_button]:
+                btn.setFixedSize(btn_size, btn_size)
+                btn.setStyleSheet(f"background-color: transparent; border: none; color: {button_color}; font-size: 12px;")
+            self.close_button.clicked.connect(self._on_close)
+            self.min_button.clicked.connect(self._on_minimize)
+            self.max_button.clicked.connect(self._on_maximize)
+            buttons_layout.addWidget(self.close_button)
+            buttons_layout.addWidget(self.min_button)
+            buttons_layout.addWidget(self.max_button)
+        else:
+            for btn in [self.min_button, self.max_button, self.close_button]:
+                btn.setFixedSize(btn_size, btn_size)
+                btn.setStyleSheet(f"background-color: transparent; border: none; color: {button_color}; font-size: 12px;")
+            self.close_button.clicked.connect(self._on_close)
+            self.min_button.clicked.connect(self._on_minimize)
+            self.max_button.clicked.connect(self._on_maximize)
+            buttons_layout.addWidget(self.min_button)
+            buttons_layout.addWidget(self.max_button)
+            buttons_layout.addWidget(self.close_button)
 
         self.menu_button = QPushButton("")
         self.menu_button.setFixedSize(btn_size, btn_size)

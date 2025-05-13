@@ -44,6 +44,8 @@ class DraggableCoverLabel(QLabel):
         self._mouse_pos = None
 
 class MainWindow(QMainWindow):
+    RESIZE_MARGIN = 6
+
     def __init__(self) -> None:
         super().__init__()
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
@@ -63,6 +65,11 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(300, 700)
         self.initial_width = self.width()
         self.is_wide_mode = self.width() >= self.initial_width * 1.5
+        
+        self._resizing = False
+        self._resize_edge = None
+        self._mouse_pos = None
+        self._start_geom = None
     
     @pyqtSlot(object)
     def on_player_ready(self, player):
@@ -1255,3 +1262,72 @@ class MainWindow(QMainWindow):
         """Show Last.fm settings dialog."""
         dialog = LastFMSettingsDialog(self.player, self)
         dialog.exec()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            edge = self._get_resize_edge(event.pos())
+            if edge:
+                self._resizing = True
+                self._resize_edge = edge
+                self._mouse_pos = event.globalPosition().toPoint()
+                self._start_geom = self.geometry()
+                event.accept()
+                return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._resizing and self._resize_edge:
+            delta = event.globalPosition().toPoint() - self._mouse_pos
+            geom = self._start_geom
+            new_geom = geom
+            if "left" in self._resize_edge:
+                new_geom.setLeft(geom.left() + delta.x())
+            if "right" in self._resize_edge:
+                new_geom.setRight(geom.right() + delta.x())
+            if "top" in self._resize_edge:
+                new_geom.setTop(geom.top() + delta.y())
+            if "bottom" in self._resize_edge:
+                new_geom.setBottom(geom.bottom() + delta.y())
+            self.setGeometry(new_geom)
+            event.accept()
+            return
+        edge = self._get_resize_edge(event.pos())
+        if edge:
+            self._set_cursor_for_edge(edge)
+        else:
+            self.unsetCursor()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._resizing = False
+        self._resize_edge = None
+        self._mouse_pos = None
+        self._start_geom = None
+        super().mouseReleaseEvent(event)
+
+    def _get_resize_edge(self, pos):
+        x, y, w, h = pos.x(), pos.y(), self.width(), self.height()
+        margin = self.RESIZE_MARGIN
+        edges = []
+        if x < margin:
+            edges.append("left")
+        elif x > w - margin:
+            edges.append("right")
+        if y < margin:
+            edges.append("top")
+        elif y > h - margin:
+            edges.append("bottom")
+        return "-".join(edges) if edges else None
+
+    def _set_cursor_for_edge(self, edge):
+        cursors = {
+            "left": Qt.CursorShape.SizeHorCursor,
+            "right": Qt.CursorShape.SizeHorCursor,
+            "top": Qt.CursorShape.SizeVerCursor,
+            "bottom": Qt.CursorShape.SizeVerCursor,
+            "left-top": Qt.CursorShape.SizeFDiagCursor,
+            "right-bottom": Qt.CursorShape.SizeFDiagCursor,
+            "right-top": Qt.CursorShape.SizeBDiagCursor,
+            "left-bottom": Qt.CursorShape.SizeBDiagCursor,
+        }
+        self.setCursor(cursors.get(edge, Qt.CursorShape.ArrowCursor))
