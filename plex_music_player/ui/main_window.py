@@ -21,12 +21,32 @@ from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog, Last
 from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image, pyintaller_resource_path
 from plex_music_player.lib.color_utils import get_dominant_color, get_contrasting_text_color, adjust_color_brightness
 from plex_music_player.lib.logger import Logger
+from plex_music_player.ui.custom_title_bar import CustomTitleBar
 
 logger = Logger()
+
+class DraggableCoverLabel(QLabel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._mouse_pos = None
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._mouse_pos = event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self._mouse_pos is not None and event.buttons() == Qt.MouseButton.LeftButton:
+            self.window().move(event.globalPosition().toPoint() - self._mouse_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self._mouse_pos = None
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         # Start the player thread and wait for the player to be ready
         self.player_thread = PlayerThread()
         self.player_thread.player_ready.connect(self.on_player_ready)
@@ -133,36 +153,39 @@ class MainWindow(QMainWindow):
             self.load_cover()
             
     def setup_ui(self, show_connect_only: bool = True) -> None:
-        """Updated setup_ui method with adaptive layout"""
         self.setWindowTitle("Plex Music Player")
         self.__load_window_icons()
 
-        # Set margins and spacing for the main layout
         layout = QVBoxLayout()
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
-        
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+
+        self.title_bar = CustomTitleBar(self, color="#1e1e1e", button_color="#ffffff")
+        layout.addWidget(self.title_bar)
+
+        main_content = QVBoxLayout()
+        main_content.setContentsMargins(10, 10, 10, 10)
+        main_content.setSpacing(10)
+
         # Create central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         central_widget.setLayout(layout)
 
         if show_connect_only:
-            # Show a connection status screen with a status label and connect button
             connect_container = QVBoxLayout()
             connect_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            
             self.status_label = QLabel("Connecting to Plex...")
             self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             connect_container.addWidget(self.status_label)
-            
             self.connect_button = QPushButton("Connect to Plex")
             self.connect_button.setFixedWidth(150)
             self.connect_button.clicked.connect(self.show_connection_dialog)
             self.connect_button.hide()
             connect_container.addWidget(self.connect_button)
-            
-            layout.addLayout(connect_container)
+            main_content.addLayout(connect_container)
+            layout.addLayout(main_content)
             return
 
         if self.is_wide_mode:
@@ -183,7 +206,7 @@ class MainWindow(QMainWindow):
             cover_container = QWidget()
             cover_layout = QVBoxLayout(cover_container)
             cover_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.cover_label = QLabel()
+            self.cover_label = DraggableCoverLabel()
             self.cover_label.setMinimumHeight(400)  # Minimum height for cover
             self.cover_label.setStyleSheet("border: none; background: transparent;")
             self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -240,7 +263,7 @@ class MainWindow(QMainWindow):
             # Cover container
             cover_container = QHBoxLayout()
             cover_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.cover_label = QLabel()
+            self.cover_label = DraggableCoverLabel()
             self.cover_label.setFixedHeight(300)
             self.cover_label.setStyleSheet("border: none; background: transparent;")
             self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
