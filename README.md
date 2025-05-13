@@ -2,7 +2,16 @@
 
 A modern music player for Plex Media Server.
 
-![Screenshot](screenshot.png)
+<p align="center">
+  <img src="screenshot1.png" alt="Compact Mode 1" width="45%" style="display:inline-block; margin-right:2%; vertical-align:top;"/>
+  <img src="screenshot2.png" alt="Compact Mode 2" width="45%" style="display:inline-block; vertical-align:top;"/>
+</p>
+<p align="center"><b>Compact mode (two examples)</b></p>
+
+<p align="center">
+  <img src="screenshot_wide.png" alt="Wide Mode" width="90%"/>
+</p>
+<p align="center"><b>Wide mode</b></p>
 
 CAUTON! AI-generated
 

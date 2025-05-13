@@ -1,5 +1,6 @@
 import sys
 import time
+import re
 
 from PyQt6.QtWidgets import (
     QMainWindow,
@@ -14,7 +15,7 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QSplitter,
 )
-from PyQt6.QtGui import QIcon, QImage
+from PyQt6.QtGui import QIcon, QImage, QPixmap
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
 from plex_music_player.models.player import PlayerThread
 from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog, LastFMSettingsDialog
@@ -554,10 +555,28 @@ class MainWindow(QMainWindow):
     def update_playback_ui(self) -> None:
         """Updates playback UI elements."""
         # Update play/pause icon according to player's state.
-        if self.player.is_playing():
-            self.play_button.setIcon(QIcon(resource_path("icons_svg/pause.svg")))
+        if hasattr(self, 'prev_button') and hasattr(self, 'play_button') and hasattr(self, 'next_button'):
+            # Use the same icon_color logic as in load_cover
+            dominant_color = None
+            if hasattr(self, 'player') and self.player.current_track:
+                image = self.cover_label.pixmap().toImage() if self.cover_label.pixmap() else None
+                if image:
+                    from plex_music_player.lib.color_utils import get_dominant_color, get_contrasting_text_color
+                    dominant_color = get_dominant_color(image)
+            if dominant_color:
+                from plex_music_player.lib.color_utils import get_contrasting_text_color
+                icon_color = "#ffffff" if get_contrasting_text_color(dominant_color).name() == "#ffffff" else "#000000"
+            else:
+                icon_color = "#ffffff"
+            if self.player.is_playing():
+                self.play_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/pause.svg"), icon_color))
+            else:
+                self.play_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/play.svg"), icon_color))
         else:
-            self.play_button.setIcon(QIcon(resource_path("icons_svg/play.svg")))
+            if self.player.is_playing():
+                self.play_button.setIcon(QIcon(resource_path("icons_svg/pause.svg")))
+            else:
+                self.play_button.setIcon(QIcon(resource_path("icons_svg/play.svg")))
         
         if not self.player.current_track:
             self.progress_slider.setEnabled(False)
@@ -639,9 +658,12 @@ class MainWindow(QMainWindow):
                         color: #666666;
                     }}
                 """
+                icon_color = "#ffffff" if get_contrasting_text_color(dominant_color).name() == "#ffffff" else "#000000"
+                self.prev_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/previous.svg"), icon_color))
+                self.play_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/play.svg" if not self.player.is_playing() else "icons_svg/pause.svg"), icon_color))
+                self.next_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/next.svg"), icon_color))
                 for btn in [self.prev_button, self.play_button, self.next_button]:
                     btn.setStyleSheet(control_buttons_style)
-                
                 # Update playlist buttons style
                 playlist_buttons_style = f"""
                     QPushButton {{
@@ -663,6 +685,11 @@ class MainWindow(QMainWindow):
                         background-color: {darker_color_str};
                     }}
                 """
+                self.add_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/add_to_playlist.svg"), icon_color))
+                self.shuffle_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/shuffle_playlist.svg"), icon_color))
+                self.remove_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/remove_track.svg"), icon_color))
+                self.clear_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/clear_playlist.svg"), icon_color))
+                self.scroll_to_current_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/locate_track.svg"), icon_color))
                 for btn in [self.add_button, self.shuffle_button, self.remove_button, self.clear_button, self.scroll_to_current_button]:
                     btn.setStyleSheet(playlist_buttons_style)
                 
@@ -719,6 +746,7 @@ class MainWindow(QMainWindow):
                 # Update title bar button colors
                 if hasattr(self, 'title_bar'):
                     self.title_bar.set_button_color(dominant_color.name(), text_color_str)
+                    self.title_bar.update_icons()
         else:
             self.cover_label.clear()
             # Reset to default styles if no cover
@@ -960,10 +988,22 @@ class MainWindow(QMainWindow):
 
     def update_play_button(self, is_playing: bool) -> None:
         """Update the play/pause button based on playback state."""
-        if is_playing:
-            self.play_button.setIcon(QIcon(resource_path("icons_svg/pause.svg")))
+        # Use the same icon_color logic as in load_cover
+        dominant_color = None
+        if hasattr(self, 'player') and self.player.current_track:
+            image = self.cover_label.pixmap().toImage() if self.cover_label.pixmap() else None
+            if image:
+                from plex_music_player.lib.color_utils import get_dominant_color, get_contrasting_text_color
+                dominant_color = get_dominant_color(image)
+        if dominant_color:
+            from plex_music_player.lib.color_utils import get_contrasting_text_color
+            icon_color = "#ffffff" if get_contrasting_text_color(dominant_color).name() == "#ffffff" else "#000000"
         else:
-            self.play_button.setIcon(QIcon(resource_path("icons_svg/play.svg")))
+            icon_color = "#ffffff"
+        if is_playing:
+            self.play_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/pause.svg"), icon_color))
+        else:
+            self.play_button.setIcon(self._get_icon_with_color(resource_path("icons_svg/play.svg"), icon_color))
         self.play_button.setEnabled(True)
 
     def change_volume(self, value: int) -> None:
@@ -1336,3 +1376,12 @@ class MainWindow(QMainWindow):
             "left-bottom": Qt.CursorShape.SizeBDiagCursor,
         }
         self.setCursor(cursors.get(edge, Qt.CursorShape.ArrowCursor))
+
+    def _get_icon_with_color(self, icon_path, color):
+        try:
+            with open(icon_path, "r", encoding="utf-8") as f:
+                svg_data = f.read()
+            svg_data = re.sub(r'fill=["\\\']#000000["\\\']', f'fill="{color}"', svg_data)
+            return QIcon(QIcon.fromTheme("", QIcon(QPixmap.fromImage(QImage.fromData(bytes(svg_data, "utf-8"))))))
+        except Exception:
+            return QIcon(icon_path)

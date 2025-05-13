@@ -1,7 +1,8 @@
 import sys
+import re
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QMenu
 from PyQt6.QtCore import Qt, QPoint, QSize
-from PyQt6.QtGui import QCursor, QAction, QIcon
+from PyQt6.QtGui import QCursor, QAction, QIcon, QPixmap, QImage
 from plex_music_player.lib.utils import resource_path
 
 class CustomTitleBar(QWidget):
@@ -124,17 +125,21 @@ class CustomTitleBar(QWidget):
     def mouseReleaseEvent(self, event):
         self._mouse_pos = None
 
-    def enterEvent(self, event):
-        # Show SVG icons in circles when hovering over the panel
-        self.close_button.setIcon(QIcon(self._icon_paths["close"]))
-        self.close_button.setIconSize(self._icon_size)
-        self.min_button.setIcon(QIcon(self._icon_paths["min"]))
-        self.min_button.setIconSize(self._icon_size)
-        self.max_button.setIcon(QIcon(self._icon_paths["max"]))
-        self.max_button.setIconSize(self._icon_size)
-        for btn in [self.close_button, self.min_button, self.max_button]:
+    def _set_icons_with_current_color(self):
+        bg_color = self.close_button.palette().button().color().name()
+        def is_dark(color):
+            color = color.lstrip('#')
+            r, g, b = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
+            return (r*0.299 + g*0.587 + b*0.114) < 186
+        icon_color = "#ffffff" if is_dark(bg_color) else "#000000"
+        for btn, key in zip([self.close_button, self.min_button, self.max_button], ["close", "min", "max"]):
+            btn.setIcon(self._get_icon_with_color(self._icon_paths[key], icon_color))
+            btn.setIconSize(self._icon_size)
             color = getattr(btn, '_icon_color', '#ffffff')
             btn.setStyleSheet(btn.styleSheet().replace("color: transparent", f"color: {color}"))
+
+    def enterEvent(self, event):
+        self._set_icons_with_current_color()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
@@ -148,4 +153,18 @@ class CustomTitleBar(QWidget):
         for btn in [self.close_button, self.min_button, self.max_button]:
             color = getattr(btn, '_icon_color', '#ffffff')
             btn.setStyleSheet(btn.styleSheet().replace(f"color: {color}", "color: transparent"))
-        super().leaveEvent(event) 
+        super().leaveEvent(event)
+
+    def _get_icon_with_color(self, icon_path, color):
+        # Read SVG and replace fill color
+        try:
+            with open(icon_path, "r", encoding="utf-8") as f:
+                svg_data = f.read()
+            # Replace all fill="#000000" or fill='#000000' with the desired color
+            svg_data = re.sub(r'fill=["\\\']#000000["\\\']', f'fill="{color}"', svg_data)
+            return QIcon(QIcon.fromTheme("", QIcon(QPixmap.fromImage(QImage.fromData(bytes(svg_data, "utf-8"))))))
+        except Exception:
+            return QIcon(icon_path)
+
+    def update_icons(self):
+        self._set_icons_with_current_color() 
