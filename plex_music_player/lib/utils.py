@@ -9,6 +9,7 @@ from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtCore import Qt
 from .logger import Logger
 from .cover_cache import cover_cache
+from pathlib import Path
 
 logger = Logger()
 
@@ -71,12 +72,15 @@ def download_artwork(track: Track) -> bytes | str | os.PathLike:
     return None
 
 
-def pyintaller_resource_path(relative_path) -> str | bytes:
-    """ Get absolute path to resource, works for dev and for PyInstaller """
-    try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-
-    return os.path.join(base_path, relative_path)
+def resource_path(relative_path):
+    # PyInstaller
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    # py2app
+    elif getattr(sys, 'frozen', False):
+        bundle_dir = os.path.dirname(sys.executable)
+        resources_dir = os.path.abspath(os.path.join(bundle_dir, '..', 'Resources'))
+        return os.path.join(resources_dir, relative_path)
+    # Usual runtime
+    base_dir = Path(__file__).parent.parent.resolve()
+    return os.path.join(base_dir, relative_path)

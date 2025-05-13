@@ -18,7 +18,8 @@ from PyQt6.QtGui import QIcon, QImage
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
 from plex_music_player.models.player import PlayerThread
 from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog, LastFMSettingsDialog
-from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image, pyintaller_resource_path
+from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image
+from plex_music_player.lib.utils import resource_path
 from plex_music_player.lib.color_utils import get_dominant_color, get_contrasting_text_color, adjust_color_brightness
 from plex_music_player.lib.logger import Logger
 from plex_music_player.ui.custom_title_bar import CustomTitleBar
@@ -104,7 +105,7 @@ class MainWindow(QMainWindow):
             myappid = u'mycompany.myproduct.subproduct.version'  # arbitrary string
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
         if sys.platform in ["linux",  "win32"]:
-            self.setWindowIcon(QIcon(pyintaller_resource_path("icon/icon_256x256.png")))
+            self.setWindowIcon(QIcon(resource_path("icon/icon_256x256.png")))
 
     def resizeEvent(self, event):
         """Handle window resize events to switch between layouts"""
@@ -136,9 +137,9 @@ class MainWindow(QMainWindow):
                 self.load_cover()
                 
                 if is_playing:
-                    self.play_button.setText("⏸")
+                    self.play_button.setIcon(QIcon(resource_path("icons_svg/pause.svg")))
                 else:
-                    self.play_button.setText("▶")
+                    self.play_button.setIcon(QIcon(resource_path("icons_svg/play.svg")))
                     
                 self.volume_slider.setValue(volume)
                 
@@ -409,7 +410,7 @@ class MainWindow(QMainWindow):
             self.next_button.setEnabled(True)
             self.player.playback_state_changed.connect(self.update_play_button)
             if not self.player.is_playing():
-                self.play_button.setText("▶")
+                self.play_button.setIcon(QIcon(resource_path("icons_svg/play.svg")))
 
     def create_playlist_widget(self) -> QWidget:
         """Create playlist widget with controls"""
@@ -421,47 +422,50 @@ class MainWindow(QMainWindow):
         # Playlist controls
         playlist_header = QHBoxLayout()
         
-        self.add_button = QPushButton("✙")
+        self.add_button = QPushButton()
+        self.add_button.setIcon(QIcon(resource_path("icons_svg/add_to_playlist.svg")))
+        self.add_button.setIconSize(QSize(11, 11))
         self.add_button.setFixedSize(30, 30)
         self.add_button.setStyleSheet(self.get_button_style())
         self.add_button.setToolTip("Add to playlist")
         self.add_button.clicked.connect(self.show_add_tracks_dialog)
         playlist_header.addWidget(self.add_button)
         
-        self.shuffle_button = QPushButton("⇄")
+        self.shuffle_button = QPushButton()
+        self.shuffle_button.setIcon(QIcon(resource_path("icons_svg/shuffle_playlist.svg")))
+        self.shuffle_button.setIconSize(QSize(11, 11))
         self.shuffle_button.setFixedSize(30, 30)
         self.shuffle_button.setStyleSheet(self.get_button_style())
         self.shuffle_button.setToolTip("Shuffle playlist")
         self.shuffle_button.clicked.connect(self.shuffle_playlist)
         playlist_header.addWidget(self.shuffle_button)
         
-        self.remove_button = QPushButton("✖")
+        self.remove_button = QPushButton()
+        self.remove_button.setIcon(QIcon(resource_path("icons_svg/remove_track.svg")))
+        self.remove_button.setIconSize(QSize(11, 11))
         self.remove_button.setFixedSize(30, 30)
         self.remove_button.setStyleSheet(self.get_button_style())
         self.remove_button.setToolTip("Remove selected track")
         self.remove_button.clicked.connect(self.remove_from_playlist)
         playlist_header.addWidget(self.remove_button)
         
-        self.clear_button = QPushButton("☠︎︎")
+        self.clear_button = QPushButton()
+        self.clear_button.setIcon(QIcon(resource_path("icons_svg/clear_playlist.svg")))
+        self.clear_button.setIconSize(QSize(11, 11))
         self.clear_button.setFixedSize(30, 30)
         self.clear_button.setStyleSheet(self.get_button_style())
         self.clear_button.setToolTip("Clear playlist")
         self.clear_button.clicked.connect(self.clear_playlist)
         playlist_header.addWidget(self.clear_button)
 
-        self.scroll_to_current_button = QPushButton("⌖")
+        self.scroll_to_current_button = QPushButton()
+        self.scroll_to_current_button.setIcon(QIcon(resource_path("icons_svg/locate_track.svg")))
+        self.scroll_to_current_button.setIconSize(QSize(11, 11))
         self.scroll_to_current_button.setFixedSize(30, 30)
         self.scroll_to_current_button.setStyleSheet(self.get_button_style())
         self.scroll_to_current_button.setToolTip("Show current track")
         self.scroll_to_current_button.clicked.connect(self.scroll_to_current_track)
         playlist_header.addWidget(self.scroll_to_current_button)
-        
-        self.lastfm_settings = QPushButton("⚙")
-        self.lastfm_settings.setToolTip("Last.fm Settings")
-        self.lastfm_settings.setFixedSize(30, 30)
-        self.lastfm_settings.setStyleSheet(self.get_button_style())
-        self.lastfm_settings.clicked.connect(self.show_lastfm_settings)
-        playlist_header.addWidget(self.lastfm_settings)
         
         playlist_layout.addLayout(playlist_header)
         
@@ -498,19 +502,25 @@ class MainWindow(QMainWindow):
         buttons_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         buttons_layout.setSpacing(10)
 
-        self.prev_button = QPushButton("\u23EE")
+        self.prev_button = QPushButton()
+        self.prev_button.setIcon(QIcon(resource_path("icons_svg/previous.svg")))
+        self.prev_button.setIconSize(QSize(14, 14))
         self.prev_button.setEnabled(False)
         self.prev_button.setFixedSize(40, 40)
         self.prev_button.clicked.connect(self.play_previous_track)
         buttons_layout.addWidget(self.prev_button)
 
-        self.play_button = QPushButton("\u25B6")
+        self.play_button = QPushButton()
+        self.play_button.setIcon(QIcon(resource_path("icons_svg/play.svg")))
+        self.play_button.setIconSize(QSize(14, 14))
         self.play_button.setEnabled(False)
         self.play_button.setFixedSize(40, 40)
         self.play_button.clicked.connect(self.toggle_play)
         buttons_layout.addWidget(self.play_button)
 
-        self.next_button = QPushButton("\u23ED")
+        self.next_button = QPushButton()
+        self.next_button.setIcon(QIcon(resource_path("icons_svg/next.svg")))
+        self.next_button.setIconSize(QSize(14, 14))
         self.next_button.setEnabled(False)
         self.next_button.setFixedSize(40, 40)
         self.next_button.clicked.connect(self.play_next_track)
@@ -544,7 +554,10 @@ class MainWindow(QMainWindow):
     def update_playback_ui(self) -> None:
         """Updates playback UI elements."""
         # Update play/pause icon according to player's state.
-        self.play_button.setText("\u23F8" if self.player.is_playing() else "\u25B6")
+        if self.player.is_playing():
+            self.play_button.setIcon(QIcon(resource_path("icons_svg/pause.svg")))
+        else:
+            self.play_button.setIcon(QIcon(resource_path("icons_svg/play.svg")))
         
         if not self.player.current_track:
             self.progress_slider.setEnabled(False)
@@ -650,7 +663,7 @@ class MainWindow(QMainWindow):
                         background-color: {darker_color_str};
                     }}
                 """
-                for btn in [self.add_button, self.shuffle_button, self.remove_button, self.clear_button, self.scroll_to_current_button, self.lastfm_settings]:
+                for btn in [self.add_button, self.shuffle_button, self.remove_button, self.clear_button, self.scroll_to_current_button]:
                     btn.setStyleSheet(playlist_buttons_style)
                 
                 # Update slider colors
@@ -703,6 +716,9 @@ class MainWindow(QMainWindow):
                         color: {text_color_str};
                     }}
                 """)
+                # Update title bar button colors
+                if hasattr(self, 'title_bar'):
+                    self.title_bar.set_button_color(dominant_color.name(), text_color_str)
         else:
             self.cover_label.clear()
             # Reset to default styles if no cover
@@ -808,7 +824,7 @@ class MainWindow(QMainWindow):
 
         self.player.clear_playlist()
         self.playlist_list.clear()
-        self.play_button.setText("▶")
+        self.play_button.setIcon(QIcon(resource_path("icons_svg/play.svg")))
         self.play_button.setEnabled(False)
         self.progress_slider.setEnabled(False)
         self.progress_slider.setValue(0)
@@ -890,7 +906,10 @@ class MainWindow(QMainWindow):
 
     def _on_playback_state_changed(self, is_playing: bool) -> None:
         """Handle playback state changes."""
-        self.play_button.setText("⏸" if is_playing else "▶")
+        if is_playing:
+            self.play_button.setIcon(QIcon(resource_path("icons_svg/pause.svg")))
+        else:
+            self.play_button.setIcon(QIcon(resource_path("icons_svg/play.svg")))
         self.progress_slider.setEnabled(is_playing)
 
     def add_to_playlist(self, track) -> None:
@@ -941,7 +960,10 @@ class MainWindow(QMainWindow):
 
     def update_play_button(self, is_playing: bool) -> None:
         """Update the play/pause button based on playback state."""
-        self.play_button.setText("⏸" if is_playing else "▶")
+        if is_playing:
+            self.play_button.setIcon(QIcon(resource_path("icons_svg/pause.svg")))
+        else:
+            self.play_button.setIcon(QIcon(resource_path("icons_svg/play.svg")))
         self.play_button.setEnabled(True)
 
     def change_volume(self, value: int) -> None:
@@ -1210,23 +1232,6 @@ class MainWindow(QMainWindow):
                 border: none;
                 border-radius: 12px;
                 color: white;
-                font-size: 12px;
-                padding: 0px;
-            }
-            QPushButton:hover {
-                background-color: #3d3d3d;
-            }
-            QPushButton:disabled {
-                background-color: #2d2d2d;
-                color: #666666;
-            }
-        """)
-        self.lastfm_settings.setStyleSheet("""
-            QPushButton {
-                background-color: #2d2d2d;
-                color: white;
-                border: none;
-                border-radius: 12px;
                 font-size: 12px;
                 padding: 0px;
             }

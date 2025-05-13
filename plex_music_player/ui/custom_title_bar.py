@@ -1,7 +1,8 @@
 import sys
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QMenu
-from PyQt6.QtCore import Qt, QPoint
-from PyQt6.QtGui import QCursor, QAction
+from PyQt6.QtCore import Qt, QPoint, QSize
+from PyQt6.QtGui import QCursor, QAction, QIcon
+from plex_music_player.lib.utils import resource_path
 
 class CustomTitleBar(QWidget):
     def __init__(self, parent=None, color="#1e1e1e", button_color="#ffffff"):
@@ -15,46 +16,53 @@ class CustomTitleBar(QWidget):
 
     def _init_ui(self, button_color):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(4, 0, 0, 0)
         layout.setSpacing(0)
 
         is_mac = sys.platform == "darwin"
         self.buttons_widget = QWidget()
         buttons_layout = QHBoxLayout(self.buttons_widget)
-        buttons_layout.setContentsMargins(0, 0, 0, 0)
+        buttons_layout.setContentsMargins(4, 0, 0, 0)
         buttons_layout.setSpacing(6)
 
         btn_size = 16
+        circle_size = 12
         self.close_button = QPushButton("")
         self.min_button = QPushButton("")
         self.max_button = QPushButton("")
+        for btn in [self.close_button, self.min_button, self.max_button]:
+            btn.setFixedSize(circle_size, circle_size)
+            btn.setStyleSheet(f"background-color: {button_color}; border: none; border-radius: 6px; color: transparent; font-size: 10px;")
+        self.close_button.clicked.connect(self._on_close)
+        self.min_button.clicked.connect(self._on_minimize)
+        self.max_button.clicked.connect(self._on_maximize)
         if is_mac:
-            for btn in [self.close_button, self.min_button, self.max_button]:
-                btn.setFixedSize(btn_size, btn_size)
-                btn.setStyleSheet(f"background-color: transparent; border: none; color: {button_color}; font-size: 12px;")
-            self.close_button.clicked.connect(self._on_close)
-            self.min_button.clicked.connect(self._on_minimize)
-            self.max_button.clicked.connect(self._on_maximize)
             buttons_layout.addWidget(self.close_button)
             buttons_layout.addWidget(self.min_button)
             buttons_layout.addWidget(self.max_button)
         else:
-            for btn in [self.min_button, self.max_button, self.close_button]:
-                btn.setFixedSize(btn_size, btn_size)
-                btn.setStyleSheet(f"background-color: transparent; border: none; color: {button_color}; font-size: 12px;")
-            self.close_button.clicked.connect(self._on_close)
-            self.min_button.clicked.connect(self._on_minimize)
-            self.max_button.clicked.connect(self._on_maximize)
             buttons_layout.addWidget(self.min_button)
             buttons_layout.addWidget(self.max_button)
             buttons_layout.addWidget(self.close_button)
 
-        self.menu_button = QPushButton("")
+        # SVG icons
+        self._icon_paths = {
+            "close": resource_path("icons_svg/window-close.svg"),
+            "min": resource_path("icons_svg/window-minimize.svg"),
+            "max": resource_path("icons_svg/window-maximize.svg"),
+        }
+        self._icon_size = QSize(8, 8)
+
+        self.menu_button = QPushButton("\u2630")
         self.menu_button.setFixedSize(btn_size, btn_size)
-        self.menu_button.setStyleSheet(f"background-color: transparent; border: none; border-radius: 0px; color: {button_color}; font-size: 20px;")
+        self.menu_button.setStyleSheet(f"background-color: transparent; border: none; border-radius: 0px; color: #ffffff; font-size: 20px;")
         self.menu = QMenu(self)
-        fake_action = QAction("Fake menu item", self)
-        self.menu.addAction(fake_action)
+        plex_action = QAction("Plex configuration", self)
+        plex_action.triggered.connect(self._show_plex_config)
+        self.menu.addAction(plex_action)
+        lastfm_action = QAction("Last.fm settings", self)
+        lastfm_action.triggered.connect(self._show_lastfm_settings)
+        self.menu.addAction(lastfm_action)
         self.menu_button.clicked.connect(self._show_menu)
 
         if is_mac:
@@ -64,10 +72,11 @@ class CustomTitleBar(QWidget):
             layout.addWidget(self.menu_button, 0, Qt.AlignmentFlag.AlignLeft)
             layout.addWidget(self.buttons_widget, 0, Qt.AlignmentFlag.AlignRight)
 
-    def set_button_color(self, color):
-        btn_size = 16
+    def set_button_color(self, bg_color, icon_color):
+        circle_size = 12
         for btn in [self.close_button, self.min_button, self.max_button]:
-            btn.setStyleSheet(f"background-color: transparent; border: none; border-radius: 8px; color: #ffffff; font-size: 12px;")
+            btn.setStyleSheet(f"background-color: {bg_color}; border: none; border-radius: 6px; color: transparent; font-size: 10px;")
+            btn._icon_color = icon_color
         self.menu_button.setStyleSheet(f"background-color: transparent; border: none; border-radius: 0px; color: #ffffff; font-size: 20px;")
 
     def _show_menu(self):
@@ -94,6 +103,14 @@ class CustomTitleBar(QWidget):
                 else:
                     self.parent.showMaximized()
 
+    def _show_plex_config(self):
+        if self.parent and hasattr(self.parent, 'show_connection_dialog'):
+            self.parent.show_connection_dialog()
+
+    def _show_lastfm_settings(self):
+        if self.parent and hasattr(self.parent, 'show_lastfm_settings'):
+            self.parent.show_lastfm_settings()
+
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._mouse_pos = event.globalPosition().toPoint() - self.parent.frameGeometry().topLeft()
@@ -108,17 +125,27 @@ class CustomTitleBar(QWidget):
         self._mouse_pos = None
 
     def enterEvent(self, event):
-        # Show icons when hovering over the panel
-        self.close_button.setText("\u2716")
-        self.min_button.setText("\u2212")
-        self.max_button.setText("\u25A1")
-        self.menu_button.setText("\u2630")
+        # Show SVG icons in circles when hovering over the panel
+        self.close_button.setIcon(QIcon(self._icon_paths["close"]))
+        self.close_button.setIconSize(self._icon_size)
+        self.min_button.setIcon(QIcon(self._icon_paths["min"]))
+        self.min_button.setIconSize(self._icon_size)
+        self.max_button.setIcon(QIcon(self._icon_paths["max"]))
+        self.max_button.setIconSize(self._icon_size)
+        for btn in [self.close_button, self.min_button, self.max_button]:
+            color = getattr(btn, '_icon_color', '#ffffff')
+            btn.setStyleSheet(btn.styleSheet().replace("color: transparent", f"color: {color}"))
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        # Hide icons when mouse leaves the panel
+        # Hide SVG icons in circles when mouse leaves the panel
+        self.close_button.setIcon(QIcon())
+        self.min_button.setIcon(QIcon())
+        self.max_button.setIcon(QIcon())
         self.close_button.setText("")
         self.min_button.setText("")
         self.max_button.setText("")
-        self.menu_button.setText("")
+        for btn in [self.close_button, self.min_button, self.max_button]:
+            color = getattr(btn, '_icon_color', '#ffffff')
+            btn.setStyleSheet(btn.styleSheet().replace(f"color: {color}", "color: transparent"))
         super().leaveEvent(event) 
