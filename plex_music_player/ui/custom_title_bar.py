@@ -16,14 +16,20 @@ class CustomTitleBar(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
     def _init_ui(self, button_color):
+        is_mac = sys.platform == "darwin"
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(4, 0, 0, 0)
+        if is_mac:
+            layout.setContentsMargins(4, 0, 0, 0)
+        else:
+            layout.setContentsMargins(0, 0, 4, 0)
         layout.setSpacing(0)
 
-        is_mac = sys.platform == "darwin"
         self.buttons_widget = QWidget()
         buttons_layout = QHBoxLayout(self.buttons_widget)
-        buttons_layout.setContentsMargins(4, 0, 0, 0)
+        if is_mac:
+            buttons_layout.setContentsMargins(4, 0, 0, 0)
+        else:
+            buttons_layout.setContentsMargins(0, 0, 4, 0)
         buttons_layout.setSpacing(6)
 
         btn_size = 16
