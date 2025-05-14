@@ -10,6 +10,7 @@ from PyQt6.QtCore import Qt
 from .logger import Logger
 from .cover_cache import cover_cache
 from pathlib import Path
+import pkg_resources
 
 logger = Logger()
 
@@ -84,3 +85,40 @@ def resource_path(relative_path):
     # Usual runtime
     base_dir = Path(__file__).parent.parent.resolve()
     return os.path.join(base_dir, relative_path)
+
+def read_resource_file(relative_path):
+    """Reads the content of a resource file, compatible with PyInstaller."""    
+    path = resource_path(relative_path)
+    try:
+        # Try direct file reading
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return f.read()
+        # For PyInstaller - try to get content from package resources
+        elif hasattr(sys, '_MEIPASS'):
+            # Try alternative method for PyInstaller
+            try:
+                from importlib.resources import files, as_file
+                try:
+                    # Try to get resource from bundle
+                    package_path = os.path.dirname(relative_path)
+                    file_name = os.path.basename(relative_path)
+                    package = 'plex_music_player'
+                    if package_path:
+                        package = f"{package}.{package_path.replace('/', '.')}"
+                    with as_file(files(package) / file_name) as f:
+                        with open(f, "r", encoding="utf-8") as f_read:
+                            return f_read.read()
+                except Exception:
+                    # If it didn't work, use pkg_resources
+                    resource_package = 'plex_music_player'
+                    return pkg_resources.resource_string(resource_package, relative_path).decode('utf-8')
+            except Exception as e:
+                logger.error(f"Error reading PyInstaller resource {path}: {e}")
+                return None
+        else:
+            logger.error(f"Resource file not found: {path}")
+            return None
+    except Exception as e:
+        logger.error(f"Error reading resource file {path}: {e}")
+        return None

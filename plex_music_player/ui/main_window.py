@@ -24,7 +24,7 @@ from PyQt6.QtGui import QIcon, QImage, QPixmap, QAction
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
 from plex_music_player.models.player import PlayerThread
 from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog, LastFMSettingsDialog
-from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image
+from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image, read_resource_file
 from plex_music_player.lib.utils import resource_path
 from plex_music_player.lib.color_utils import get_dominant_color, get_contrasting_text_color, adjust_color_brightness
 from plex_music_player.lib.logger import Logger
@@ -1387,10 +1387,13 @@ class MainWindow(QMainWindow):
 
     def _get_icon_with_color(self, icon_path, color):
         try:
-            with open(icon_path, "r", encoding="utf-8") as f:
-                svg_data = f.read()
-            svg_data = re.sub(r'fill=["\\\']#000000["\\\']', f'fill="{color}"', svg_data)
-            return QIcon(QIcon.fromTheme("", QIcon(QPixmap.fromImage(QImage.fromData(bytes(svg_data, "utf-8"))))))
+            # Use read_resource_file instead of direct file reading
+            svg_data = read_resource_file(icon_path.replace(resource_path(""), ""))
+            if svg_data:
+                # Replace all fill="#000000" or fill='#000000' with the desired color
+                svg_data = re.sub(r'fill=["\\\']#000000["\\\']', f'fill="{color}"', svg_data)
+                return QIcon(QIcon.fromTheme("", QIcon(QPixmap.fromImage(QImage.fromData(bytes(svg_data, "utf-8"))))))
+            return QIcon(icon_path)
         except Exception:
             return QIcon(icon_path)
 
