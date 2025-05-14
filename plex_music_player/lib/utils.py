@@ -126,7 +126,8 @@ def read_resource_file(relative_path):
 
 def create_icon(relative_path, color=None):
     """Creates a QIcon safely, compatible with PyInstaller."""
-    if hasattr(sys, '_MEIPASS'):  # If running in PyInstaller bundle
+    # Check if we are running in a PyInstaller bundle
+    if hasattr(sys, '_MEIPASS'):
         path = resource_path(relative_path)
         if ".svg" in path.lower():
             # For SVG files, we need special handling
@@ -136,6 +137,9 @@ def create_icon(relative_path, color=None):
                     # Replace all fill="#000000" or fill='#000000' with the desired color
                     svg_data = re.sub(r'fill=["\\\']#000000["\\\']', f'fill="{color}"', svg_data)
                 return QIcon(QIcon.fromTheme("", QIcon(QPixmap.fromImage(QImage.fromData(bytes(svg_data, "utf-8"))))))
+            else:
+                # If failed to read SVG, log an error
+                logger.error(f"Failed to read SVG data for {relative_path}")
     
     # Standard approach for non-PyInstaller or when special handling fails
     return QIcon(resource_path(relative_path))

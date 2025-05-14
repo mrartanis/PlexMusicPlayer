@@ -1089,6 +1089,17 @@ class MainWindow(QMainWindow):
 
     def _reset_button_styles(self) -> None:
         """Reset button styles to default."""
+        # Update icons using the create_icon function
+        self.prev_button.setIcon(create_icon("icons_svg/previous.svg"))
+        self.play_button.setIcon(create_icon("icons_svg/play.svg"))
+        self.next_button.setIcon(create_icon("icons_svg/next.svg"))
+        self.add_button.setIcon(create_icon("icons_svg/add_to_playlist.svg"))
+        self.shuffle_button.setIcon(create_icon("icons_svg/shuffle_playlist.svg"))
+        self.remove_button.setIcon(create_icon("icons_svg/remove_track.svg"))
+        self.clear_button.setIcon(create_icon("icons_svg/clear_playlist.svg"))
+        self.scroll_to_current_button.setIcon(create_icon("icons_svg/locate_track.svg"))
+        
+        # Reset button styles        
         self.play_button.setStyleSheet("""
             QPushButton {
                 background-color: #444444;
