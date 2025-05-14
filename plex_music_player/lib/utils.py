@@ -5,16 +5,16 @@ import tempfile
 from typing import Optional, Tuple, Dict
 from plexapi.server import PlexServer
 from plexapi.audio import Track
-from PyQt6.QtGui import QImage, QPixmap
+from PyQt6.QtGui import QImage, QPixmap, QIcon
 from PyQt6.QtCore import Qt
 from .logger import Logger
 from .cover_cache import cover_cache
 from pathlib import Path
-import pkg_resources
+import re
 
 logger = Logger()
 
-# Простой кэш в памяти для обложек
+
 _cover_cache: Dict[str, QPixmap] = {}
 
 def format_time(ms: int) -> str:
@@ -37,7 +37,7 @@ def load_cover_image(plex: PlexServer, track: Track, size: int = 600) -> Optiona
         if not track or not plex:
             return None
             
-        # Пробуем получить обложку альбома или трека
+        # Try to get album or track cover
         thumb = None
         if hasattr(track, 'parentThumb'):
             thumb = track.parentThumb
@@ -49,7 +49,7 @@ def load_cover_image(plex: PlexServer, track: Track, size: int = 600) -> Optiona
             
         thumb_url = plex.url(thumb, includeToken=True)
         
-        # Используем кэш для получения изображения
+        # Use cache to get image
         return cover_cache.get_qt_image(thumb_url)
             
     except Exception as e:
@@ -98,6 +98,7 @@ def read_resource_file(relative_path):
         elif hasattr(sys, '_MEIPASS'):
             # Try alternative method for PyInstaller
             try:
+                import pkg_resources
                 from importlib.resources import files, as_file
                 try:
                     # Try to get resource from bundle
@@ -122,3 +123,19 @@ def read_resource_file(relative_path):
     except Exception as e:
         logger.error(f"Error reading resource file {path}: {e}")
         return None
+
+def create_icon(relative_path, color=None):
+    """Creates a QIcon safely, compatible with PyInstaller."""
+    if hasattr(sys, '_MEIPASS'):  # If running in PyInstaller bundle
+        path = resource_path(relative_path)
+        if ".svg" in path.lower():
+            # For SVG files, we need special handling
+            svg_data = read_resource_file(relative_path)
+            if svg_data:
+                if color:
+                    # Replace all fill="#000000" or fill='#000000' with the desired color
+                    svg_data = re.sub(r'fill=["\\\']#000000["\\\']', f'fill="{color}"', svg_data)
+                return QIcon(QIcon.fromTheme("", QIcon(QPixmap.fromImage(QImage.fromData(bytes(svg_data, "utf-8"))))))
+    
+    # Standard approach for non-PyInstaller or when special handling fails
+    return QIcon(resource_path(relative_path))

@@ -3,7 +3,7 @@ import re
 from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QMenu
 from PyQt6.QtCore import Qt, QPoint, QSize
 from PyQt6.QtGui import QCursor, QAction, QIcon, QPixmap, QImage
-from plex_music_player.lib.utils import resource_path, read_resource_file
+from plex_music_player.lib.utils import resource_path, read_resource_file, create_icon
 
 class CustomTitleBar(QWidget):
     def __init__(self, parent=None, color="#1e1e1e", button_color="#ffffff"):
@@ -133,7 +133,8 @@ class CustomTitleBar(QWidget):
             return (r*0.299 + g*0.587 + b*0.114) < 186
         icon_color = "#ffffff" if is_dark(bg_color) else "#000000"
         for btn, key in zip([self.close_button, self.min_button, self.max_button], ["close", "min", "max"]):
-            btn.setIcon(self._get_icon_with_color(self._icon_paths[key], icon_color))
+            icon_path = self._icon_paths[key].replace(resource_path(""), "")
+            btn.setIcon(create_icon(icon_path, icon_color))
             btn.setIconSize(self._icon_size)
             color = getattr(btn, '_icon_color', '#ffffff')
             btn.setStyleSheet(btn.styleSheet().replace("color: transparent", f"color: {color}"))
@@ -158,12 +159,8 @@ class CustomTitleBar(QWidget):
     def _get_icon_with_color(self, icon_path, color):
         # Read SVG and replace fill color
         try:
-            svg_data = read_resource_file(icon_path.replace(resource_path(""), ""))
-            if svg_data:
-                # Replace all fill="#000000" or fill='#000000' with the desired color
-                svg_data = re.sub(r'fill=["\\\']#000000["\\\']', f'fill="{color}"', svg_data)
-                return QIcon(QIcon.fromTheme("", QIcon(QPixmap.fromImage(QImage.fromData(bytes(svg_data, "utf-8"))))))
-            return QIcon(icon_path)
+            path = icon_path.replace(resource_path(""), "")
+            return create_icon(path, color)
         except Exception:
             return QIcon(icon_path)
 
