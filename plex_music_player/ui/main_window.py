@@ -14,8 +14,13 @@ from PyQt6.QtWidgets import (
     QDialog,
     QProgressBar,
     QSplitter,
+    QMenu,
+    QScrollArea,
+    QTextEdit,
+    QApplication,
+    QGridLayout,
 )
-from PyQt6.QtGui import QIcon, QImage, QPixmap
+from PyQt6.QtGui import QIcon, QImage, QPixmap, QAction
 from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
 from plex_music_player.models.player import PlayerThread
 from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog, LastFMSettingsDialog
@@ -476,6 +481,9 @@ class MainWindow(QMainWindow):
         self.playlist_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.playlist_list.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         self.playlist_list.itemDoubleClicked.connect(self.play_from_playlist)
+        # Enable context menu
+        self.playlist_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.playlist_list.customContextMenuRequested.connect(self.show_playlist_context_menu)
         playlist_layout.addWidget(self.playlist_list)
         
         return playlist_widget
@@ -1385,3 +1393,333 @@ class MainWindow(QMainWindow):
             return QIcon(QIcon.fromTheme("", QIcon(QPixmap.fromImage(QImage.fromData(bytes(svg_data, "utf-8"))))))
         except Exception:
             return QIcon(icon_path)
+
+    def show_playlist_context_menu(self, pos):
+        """Show playlist context menu"""
+        selected_items = self.playlist_list.selectedIndexes()
+        if not selected_items:
+            return
+        selected_track = self.playlist_list.item(selected_items[0].row())
+        if not selected_track:
+            return
+        menu = QMenu(self)
+        get_info_action = QAction("Get Track Info", self)
+        get_info_action.triggered.connect(lambda: self.show_track_info(selected_track))
+        menu.addAction(get_info_action)
+        menu.exec(self.playlist_list.mapToGlobal(pos))
+
+    def show_track_info(self, item):
+        """Show detailed track information."""
+        track_index = self.playlist_list.row(item)
+        track = self.player.playlist[track_index]
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Track Info")
+        dialog.setMinimumSize(600, 500)
+        
+        layout = QVBoxLayout()
+        
+        # Create a scroll area for the content
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_content = QWidget()
+        scroll_layout = QGridLayout(scroll_content)
+        scroll_layout.setColumnStretch(0, 0)  # Label column
+        scroll_layout.setColumnStretch(1, 1)  # Value column
+        scroll_layout.setColumnStretch(2, 0)  # Button column
+        
+        # Track title
+        title_label = QLabel(f"<h2>{track.title}</h2>")
+        scroll_layout.addWidget(title_label, 0, 0, 1, 3)
+        
+        row = 1
+        
+        # Artist
+        scroll_layout.addWidget(QLabel("<b>Artist:</b>"), row, 0)
+        artist_value = QLabel(track.grandparentTitle)
+        scroll_layout.addWidget(artist_value, row, 1)
+        copy_btn = QPushButton("Copy")
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(track.grandparentTitle))
+        scroll_layout.addWidget(copy_btn, row, 2)
+        row += 1
+        
+        # Album
+        scroll_layout.addWidget(QLabel("<b>Album:</b>"), row, 0)
+        album_value = QLabel(track.parentTitle)
+        scroll_layout.addWidget(album_value, row, 1)
+        copy_btn = QPushButton("Copy")
+        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(track.parentTitle))
+        scroll_layout.addWidget(copy_btn, row, 2)
+        row += 1
+        
+        # Year information
+        if hasattr(track, 'year') and track.year:
+            scroll_layout.addWidget(QLabel("<b>Year:</b>"), row, 0)
+            year_value = QLabel(str(track.year))
+            scroll_layout.addWidget(year_value, row, 1)
+            copy_btn = QPushButton("Copy")
+            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(str(track.year)))
+            scroll_layout.addWidget(copy_btn, row, 2)
+            row += 1
+        
+        # Duration information
+        if hasattr(track, 'duration'):
+            duration_str = format_time(track.duration)
+            scroll_layout.addWidget(QLabel("<b>Duration:</b>"), row, 0)
+            duration_value = QLabel(duration_str)
+            scroll_layout.addWidget(duration_value, row, 1)
+            copy_btn = QPushButton("Copy")
+            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(duration_str))
+            scroll_layout.addWidget(copy_btn, row, 2)
+            row += 1
+        
+        # Media container information
+        if hasattr(track, 'media') and track.media:
+            media = track.media[0]
+            if isinstance(media, dict):
+                container = media.get('container', 'Unknown')
+            else:
+                container = media.container if hasattr(media, 'container') else 'Unknown'
+            
+            scroll_layout.addWidget(QLabel("<b>Container:</b>"), row, 0)
+            container_value = QLabel(container)
+            scroll_layout.addWidget(container_value, row, 1)
+            copy_btn = QPushButton("Copy")
+            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(container))
+            scroll_layout.addWidget(copy_btn, row, 2)
+            row += 1
+        
+        # Get the stream URL
+        stream_url = self.player._create_stream_url(track, self.player.plex)
+        if stream_url:
+            scroll_layout.addWidget(QLabel("<b>Stream URL:</b>"), row, 0)
+            url_label = QLabel(f"<a href='{stream_url}'>{stream_url}</a>")
+            url_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+            url_label.setOpenExternalLinks(True)
+            url_label.setWordWrap(True)
+            scroll_layout.addWidget(url_label, row, 1)
+            copy_btn = QPushButton("Copy")
+            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(stream_url))
+            scroll_layout.addWidget(copy_btn, row, 2)
+            row += 1
+        
+        # Get thumbnail URL if available
+        thumb_url = None
+        if hasattr(track, 'thumb') and track.thumb:
+            thumb_url = self.player.plex.url(track.thumb, includeToken=True)
+        elif hasattr(track, 'parentThumb') and track.parentThumb:
+            thumb_url = self.player.plex.url(track.parentThumb, includeToken=True)
+        
+        if thumb_url:
+            scroll_layout.addWidget(QLabel("<b>Cover URL:</b>"), row, 0)
+            thumb_label = QLabel(f"<a href='{thumb_url}'>{thumb_url}</a>")
+            thumb_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+            thumb_label.setOpenExternalLinks(True)
+            thumb_label.setWordWrap(True)
+            scroll_layout.addWidget(thumb_label, row, 1)
+            copy_btn = QPushButton("Copy")
+            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(thumb_url))
+            scroll_layout.addWidget(copy_btn, row, 2)
+            row += 1
+        
+        # Rating key and other IDs
+        if hasattr(track, 'ratingKey'):
+            scroll_layout.addWidget(QLabel("<b>Rating Key:</b>"), row, 0)
+            rating_key_value = QLabel(str(track.ratingKey))
+            scroll_layout.addWidget(rating_key_value, row, 1)
+            copy_btn = QPushButton("Copy")
+            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(str(track.ratingKey)))
+            scroll_layout.addWidget(copy_btn, row, 2)
+            row += 1
+        
+        if hasattr(track, 'key'):
+            scroll_layout.addWidget(QLabel("<b>Key:</b>"), row, 0)
+            key_value = QLabel(str(track.key))
+            scroll_layout.addWidget(key_value, row, 1)
+            copy_btn = QPushButton("Copy")
+            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(str(track.key)))
+            scroll_layout.addWidget(copy_btn, row, 2)
+            row += 1
+        
+        # File details
+        if hasattr(track, 'media') and track.media:
+            media = track.media[0]
+            
+            # Handle both dictionary and object media formats
+            if isinstance(media, dict):
+                if 'parts' in media and media['parts']:
+                    part = media['parts'][0]
+                    if isinstance(part, dict):
+                        if 'file' in part:
+                            scroll_layout.addWidget(QLabel("<b>File:</b>"), row, 0)
+                            file_value = QLabel(part['file'])
+                            file_value.setWordWrap(True)
+                            scroll_layout.addWidget(file_value, row, 1)
+                            copy_btn = QPushButton("Copy")
+                            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(part['file']))
+                            scroll_layout.addWidget(copy_btn, row, 2)
+                            row += 1
+                        
+                        if 'size' in part:
+                            size_mb = part['size'] / (1024 * 1024)
+                            size_str = f"{size_mb:.2f} MB"
+                            scroll_layout.addWidget(QLabel("<b>Size:</b>"), row, 0)
+                            size_value = QLabel(size_str)
+                            scroll_layout.addWidget(size_value, row, 1)
+                            copy_btn = QPushButton("Copy")
+                            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(size_str))
+                            scroll_layout.addWidget(copy_btn, row, 2)
+                            row += 1
+                        
+                        if 'audioCodec' in part:
+                            scroll_layout.addWidget(QLabel("<b>Audio Codec:</b>"), row, 0)
+                            codec_value = QLabel(part['audioCodec'])
+                            scroll_layout.addWidget(codec_value, row, 1)
+                            copy_btn = QPushButton("Copy")
+                            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(part['audioCodec']))
+                            scroll_layout.addWidget(copy_btn, row, 2)
+                            row += 1
+                        
+                        if 'audioChannels' in part:
+                            scroll_layout.addWidget(QLabel("<b>Audio Channels:</b>"), row, 0)
+                            channels_value = QLabel(str(part['audioChannels']))
+                            scroll_layout.addWidget(channels_value, row, 1)
+                            copy_btn = QPushButton("Copy")
+                            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(str(part['audioChannels'])))
+                            scroll_layout.addWidget(copy_btn, row, 2)
+                            row += 1
+            else:
+                if hasattr(media, 'parts') and media.parts:
+                    part = media.parts[0]
+                    if hasattr(part, 'file'):
+                        scroll_layout.addWidget(QLabel("<b>File:</b>"), row, 0)
+                        file_value = QLabel(part.file)
+                        file_value.setWordWrap(True)
+                        scroll_layout.addWidget(file_value, row, 1)
+                        copy_btn = QPushButton("Copy")
+                        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(part.file))
+                        scroll_layout.addWidget(copy_btn, row, 2)
+                        row += 1
+                    
+                    if hasattr(part, 'size'):
+                        size_mb = part.size / (1024 * 1024)
+                        size_str = f"{size_mb:.2f} MB"
+                        scroll_layout.addWidget(QLabel("<b>Size:</b>"), row, 0)
+                        size_value = QLabel(size_str)
+                        scroll_layout.addWidget(size_value, row, 1)
+                        copy_btn = QPushButton("Copy")
+                        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(size_str))
+                        scroll_layout.addWidget(copy_btn, row, 2)
+                        row += 1
+                    
+                    if hasattr(part, 'audioCodec'):
+                        scroll_layout.addWidget(QLabel("<b>Audio Codec:</b>"), row, 0)
+                        codec_value = QLabel(part.audioCodec)
+                        scroll_layout.addWidget(codec_value, row, 1)
+                        copy_btn = QPushButton("Copy")
+                        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(part.audioCodec))
+                        scroll_layout.addWidget(copy_btn, row, 2)
+                        row += 1
+                    
+                    if hasattr(part, 'audioChannels'):
+                        scroll_layout.addWidget(QLabel("<b>Audio Channels:</b>"), row, 0)
+                        channels_value = QLabel(str(part.audioChannels))
+                        scroll_layout.addWidget(channels_value, row, 1)
+                        copy_btn = QPushButton("Copy")
+                        copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(str(part.audioChannels)))
+                        scroll_layout.addWidget(copy_btn, row, 2)
+                        row += 1
+        
+        # Additional metadata
+        if hasattr(track, 'originalTitle') and track.originalTitle:
+            scroll_layout.addWidget(QLabel("<b>Original Title:</b>"), row, 0)
+            orig_title_value = QLabel(track.originalTitle)
+            scroll_layout.addWidget(orig_title_value, row, 1)
+            copy_btn = QPushButton("Copy")
+            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(track.originalTitle))
+            scroll_layout.addWidget(copy_btn, row, 2)
+            row += 1
+        
+        if hasattr(track, 'index') and track.index:
+            scroll_layout.addWidget(QLabel("<b>Track Number:</b>"), row, 0)
+            index_value = QLabel(str(track.index))
+            scroll_layout.addWidget(index_value, row, 1)
+            copy_btn = QPushButton("Copy")
+            copy_btn.clicked.connect(lambda: QApplication.clipboard().setText(str(track.index)))
+            scroll_layout.addWidget(copy_btn, row, 2)
+            row += 1
+        
+        # Collect data for "Copy All" functionality
+        all_info = []
+        all_info.append(f"Title: {track.title}")
+        all_info.append(f"Artist: {track.grandparentTitle}")
+        all_info.append(f"Album: {track.parentTitle}")
+        if hasattr(track, 'year') and track.year:
+            all_info.append(f"Year: {track.year}")
+        if hasattr(track, 'duration'):
+            all_info.append(f"Duration: {format_time(track.duration)}")
+        if hasattr(track, 'media') and track.media:
+            media = track.media[0]
+            if isinstance(media, dict):
+                container = media.get('container', 'Unknown')
+            else:
+                container = media.container if hasattr(media, 'container') else 'Unknown'
+            all_info.append(f"Container: {container}")
+        if stream_url:
+            all_info.append(f"Stream URL: {stream_url}")
+        if thumb_url:
+            all_info.append(f"Cover URL: {thumb_url}")
+        if hasattr(track, 'ratingKey'):
+            all_info.append(f"Rating Key: {track.ratingKey}")
+        if hasattr(track, 'key'):
+            all_info.append(f"Key: {track.key}")
+        
+        # File details for "Copy All"
+        if hasattr(track, 'media') and track.media:
+            media = track.media[0]
+            if isinstance(media, dict):
+                if 'parts' in media and media['parts']:
+                    part = media['parts'][0]
+                    if isinstance(part, dict):
+                        if 'file' in part:
+                            all_info.append(f"File: {part['file']}")
+                        if 'size' in part:
+                            size_mb = part['size'] / (1024 * 1024)
+                            all_info.append(f"Size: {size_mb:.2f} MB")
+                        if 'audioCodec' in part:
+                            all_info.append(f"Audio Codec: {part['audioCodec']}")
+                        if 'audioChannels' in part:
+                            all_info.append(f"Audio Channels: {part['audioChannels']}")
+            else:
+                if hasattr(media, 'parts') and media.parts:
+                    part = media.parts[0]
+                    if hasattr(part, 'file'):
+                        all_info.append(f"File: {part.file}")
+                    if hasattr(part, 'size'):
+                        size_mb = part.size / (1024 * 1024)
+                        all_info.append(f"Size: {size_mb:.2f} MB")
+                    if hasattr(part, 'audioCodec'):
+                        all_info.append(f"Audio Codec: {part.audioCodec}")
+                    if hasattr(part, 'audioChannels'):
+                        all_info.append(f"Audio Channels: {part.audioChannels}")
+        
+        scroll_area.setWidget(scroll_content)
+        layout.addWidget(scroll_area)
+        
+        # Buttons layout
+        button_layout = QHBoxLayout()
+        
+        # Copy All button
+        copy_all_button = QPushButton("Copy All Info")
+        copy_all_button.clicked.connect(lambda: QApplication.clipboard().setText("\n".join(all_info)))
+        button_layout.addWidget(copy_all_button)
+        
+        # Close button
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(dialog.accept)
+        button_layout.addWidget(close_button)
+        
+        layout.addLayout(button_layout)
+        
+        dialog.setLayout(layout)
+        dialog.exec()

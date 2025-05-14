@@ -51,30 +51,49 @@ class SavedTrack:
 
     def getStreamURL(self) -> str:
         """Get stream URL for the track."""
-        if not self.media:
+        if not self._server or not self.media:
             return None
             
         try:
+            # Always manually create the stream URL
+            if not isinstance(self.media, list) or not self.media:
+                return None
+                
+            media = self.media[0]
+            media_key = None
+            
             # Handle both dictionary and object media formats
-            if isinstance(self.media[0], dict):
-                container = self.media[0].get('container')
-                parts = self.media[0].get('parts', [])
+            if isinstance(media, dict):
+                if "parts" not in media or not media["parts"]:
+                    return None
+                    
+                parts = media["parts"]
+                if not parts or not isinstance(parts, list):
+                    return None
+                    
+                part = parts[0]
+                if isinstance(part, dict):
+                    media_key = part.get("key")
+                else:
+                    media_key = part.key if hasattr(part, "key") else None
             else:
-                container = self.media[0].container
-                parts = self.media[0].parts
-                
-            if not parts:
+                if not hasattr(media, "parts") or not media.parts:
+                    return None
+                    
+                parts = media.parts
+                if not parts:
+                    return None
+                    
+                part = parts[0]
+                if isinstance(part, dict):
+                    media_key = part.get("key")
+                else:
+                    media_key = part.key if hasattr(part, "key") else None
+            
+            if not media_key:
                 return None
                 
-            # Handle both dictionary and object part formats
-            if isinstance(parts[0], dict):
-                media_key = parts[0].get('key')
-            else:
-                media_key = parts[0].key
-                
-            if not self._server:
-                return None
-                
+            # Build the stream URL
             token = self._server._token
             base_url = self._server.url(media_key)
             
@@ -561,17 +580,42 @@ class Player(QObject):
     @pyqtSlot(result=str)
     def get_stream_url(self) -> str:
         """Get stream URL with retry mechanism."""
-        if not self.current_track:
+        if not self.current_track or not self.plex:
             return None
             
         for attempt in range(MAX_RETRY_ATTEMPTS):
             try:
                 logger.debug(f"Attempting to get stream URL (attempt {attempt + 1})")
-                url = self.current_track.getStreamURL()
+                
+                # If track doesn't have media information, try to refresh it
+                if not hasattr(self.current_track, "media") or not self.current_track.media:
+                    if hasattr(self.current_track, "ratingKey"):
+                        try:
+                            refreshed_track = self.plex.fetchItem(self.current_track.ratingKey)
+                            if refreshed_track and hasattr(refreshed_track, "media"):
+                                # Update the current track's media info
+                                if isinstance(self.current_track, SavedTrack):
+                                    self.current_track.media = refreshed_track.media
+                                    self.current_track._server = self.plex
+                                else:
+                                    self.current_track = refreshed_track
+                        except Exception as refresh_error:
+                            logger.error(f"Error refreshing track: {refresh_error}")
+                            if attempt < MAX_RETRY_ATTEMPTS - 1:
+                                time.sleep(RETRY_DELAY)
+                                continue
+                            else:
+                                return None
+                
+                # Use the utility method to create the stream URL
+                url = self._create_stream_url(self.current_track, self.plex)
+                
                 if url:
-                    logger.debug(f"Stream URL obtained: {url}")
+                    logger.debug(f"Stream URL manually constructed: {url}")
                     return url
-                raise ConnectionError("Failed to get stream URL")
+                    
+                raise ConnectionError("Failed to construct stream URL")
+                
             except Exception as e:
                 logger.error(f"Error getting stream URL (attempt {attempt + 1}): {e}")
                 if attempt < MAX_RETRY_ATTEMPTS - 1:
@@ -1320,14 +1364,16 @@ class Player(QObject):
     @pyqtSlot(result=int)
     def get_current_track_size(self) -> Optional[int]:
         """Return the size of the current track in bytes."""
-        if not self.current_track or not self.current_track.media or not self.current_track.media[0].parts:
+        if not self.current_track or not self.plex:
             return None
         
         try:
-            media_key = self.current_track.media[0].parts[0].key
-            token = self.current_track._server._token
-            base_url = self.current_track._server.url(media_key)
-            stream_url = f"{base_url}?download=1&X-Plex-Token={token}"
+            # Use the utility method to create the stream URL
+            stream_url = self._create_stream_url(self.current_track, self.plex)
+            if not stream_url:
+                return None
+                
+            # Get the content length
             response = requests.head(stream_url)
             if response.status_code == 200:
                 return int(response.headers.get('Content-Length', 0))
@@ -1789,6 +1835,65 @@ class Player(QObject):
         self.lastfm.enabled = enabled
         self.lastfm_status_changed.emit(enabled)
         self._save_lastfm_config()
+
+    def _create_stream_url(self, track, plex_server=None) -> Optional[str]:
+        """
+        Create a stream URL for the given track.
+        
+        Args:
+            track: The track to create a stream URL for
+            plex_server: Optional Plex server to use. If None, uses self.plex
+            
+        Returns:
+            str: The stream URL or None if it couldn't be created
+        """
+        server = plex_server or self.plex
+        if not server or not track:
+            return None
+            
+        try:
+            # Extract media key from the track
+            if not hasattr(track, "media") or not track.media:
+                return None
+                
+            media = track.media[0]
+            media_key = None
+            
+            # Handle both dictionary and object media formats
+            if isinstance(media, dict):
+                if "parts" not in media or not media["parts"]:
+                    return None
+                
+                parts = media["parts"]
+                if parts and isinstance(parts, list):
+                    part = parts[0]
+                    if isinstance(part, dict):
+                        media_key = part.get("key")
+                    else:
+                        media_key = part.key if hasattr(part, "key") else None
+            else:
+                if not hasattr(media, "parts") or not media.parts:
+                    return None
+                
+                parts = media.parts
+                if parts:
+                    part = parts[0]
+                    if isinstance(part, dict):
+                        media_key = part.get("key")
+                    else:
+                        media_key = part.key if hasattr(part, "key") else None
+            
+            if not media_key:
+                return None
+            
+            # Build the stream URL
+            token = server._token
+            base_url = server.url(media_key)
+            return f"{base_url}?download=1&X-Plex-Token={token}"
+            
+        except Exception as e:
+            logger.error(f"Error creating stream URL: {e}")
+            return None
 
 class PlayerThread(QThread):
     player_ready = pyqtSignal(object)  # Signal to notify that the player is ready
