@@ -1,4 +1,4 @@
-pyinstaller -F --add-data "MusicApp.iconset/icon_256x256.png:icon" plex_music_player/__main__.py || exit 1
+pyinstaller -F --add-data "MusicApp.iconset/icon_256x256.png:icon" --add-data "plex_music_player/icons_svg/*.svg:plex_music_player/icons_svg" plex_music_player/__main__.py || exit 1
 mv dist/__main__ PlexMusicPlayer_linux_x86_64
 
 

@@ -24,7 +24,7 @@ jobs:
           pip install pyinstaller
       - name: Build Linux binary
         run: |
-          pyinstaller -F --add-data "MusicApp.iconset/icon_256x256.png:icon" plex_music_player/__main__.py
+          pyinstaller -F --add-data "MusicApp.iconset/icon_256x256.png:icon" --add-data "plex_music_player/icons_svg/*.svg:plex_music_player/icons_svg" plex_music_player/__main__.py
           mv dist/__main__ PlexMusicPlayer_linux_x86_64
       - name: Upload Linux binary
         uses: actions/upload-artifact@v4
