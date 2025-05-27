@@ -124,22 +124,20 @@ def read_resource_file(relative_path):
         logger.error(f"Error reading resource file {path}: {e}")
         return None
 
-def create_icon(relative_path, color=None):
-    """Creates a QIcon safely, compatible with PyInstaller."""
-    # Check if we are running in a PyInstaller bundle
-    if hasattr(sys, '_MEIPASS'):
-        path = resource_path(relative_path)
-        if ".svg" in path.lower():
-            # For SVG files, we need special handling
-            svg_data = read_resource_file(relative_path)
-            if svg_data:
-                if color:
-                    # Replace all fill="#000000" or fill='#000000' with the desired color
-                    svg_data = re.sub(r'fill=["\\\']#000000["\\\']', f'fill="{color}"', svg_data)
-                return QIcon(QIcon.fromTheme("", QIcon(QPixmap.fromImage(QImage.fromData(bytes(svg_data, "utf-8"))))))
-            else:
-                # If failed to read SVG, log an error
-                logger.error(f"Failed to read SVG data for {relative_path}")
-    
-    # Standard approach for non-PyInstaller or when special handling fails
-    return QIcon(resource_path(relative_path))
+def create_icon(relative_path, color):
+    """Creates a QIcon safely, compatible with PyInstaller, py2app и обычным запуском."""
+    logger.info(f"SVG called for {relative_path} with color {color}")
+    path = resource_path(relative_path)
+    logger.info(f"Creating icon from SVG: {path}")
+    if ".svg" in path.lower():
+        svg_data = read_resource_file(relative_path)
+        if svg_data and color:
+            svg_data = re.sub(r'fill="(?!none)([^\"]*)"', f'fill="{color}"', svg_data)
+            svg_data = re.sub(r"fill='(?!none)([^']*)'", f"fill='{color}'", svg_data)
+            svg_data = re.sub(r'(<path\b(?![^>]*\bfill=)[^>]*)>', r'\1 fill="' + color + '">', svg_data)
+            return QIcon(QIcon.fromTheme("", QIcon(QPixmap.fromImage(QImage.fromData(bytes(svg_data, "utf-8"))))))
+        elif svg_data:
+            return QIcon(QIcon.fromTheme("", QIcon(QPixmap.fromImage(QImage.fromData(bytes(svg_data, "utf-8"))))))
+        else:
+            logger.error(f"Failed to read SVG data for {relative_path}")
+    return QIcon(path)

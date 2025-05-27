@@ -143,9 +143,9 @@ class MainWindow(QMainWindow):
                 self.load_cover()
                 
                 if is_playing:
-                    self.play_button.setIcon(create_icon("icons_svg/pause.svg"))
+                    self.play_button.setIcon(create_icon("icons_svg/pause.svg", "#ffffff"))
                 else:
-                    self.play_button.setIcon(create_icon("icons_svg/play.svg"))
+                    self.play_button.setIcon(create_icon("icons_svg/play.svg", "#ffffff"))
                     
                 self.volume_slider.setValue(volume)
                 
@@ -416,7 +416,7 @@ class MainWindow(QMainWindow):
             self.next_button.setEnabled(True)
             self.player.playback_state_changed.connect(self.update_play_button)
             if not self.player.is_playing():
-                self.play_button.setIcon(create_icon("icons_svg/play.svg"))
+                self.play_button.setIcon(create_icon("icons_svg/play.svg", "#ffffff"))
 
     def create_playlist_widget(self) -> QWidget:
         """Create playlist widget with controls"""
@@ -429,7 +429,7 @@ class MainWindow(QMainWindow):
         playlist_header = QHBoxLayout()
         
         self.add_button = QPushButton()
-        self.add_button.setIcon(create_icon("icons_svg/add_to_playlist.svg"))
+        self.add_button.setIcon(create_icon("icons_svg/add_to_playlist.svg", "#ffffff"))
         self.add_button.setIconSize(QSize(11, 11))
         self.add_button.setFixedSize(30, 30)
         self.add_button.setStyleSheet(self.get_button_style())
@@ -438,7 +438,7 @@ class MainWindow(QMainWindow):
         playlist_header.addWidget(self.add_button)
         
         self.shuffle_button = QPushButton()
-        self.shuffle_button.setIcon(create_icon("icons_svg/shuffle_playlist.svg"))
+        self.shuffle_button.setIcon(create_icon("icons_svg/shuffle_playlist.svg", "#ffffff"))
         self.shuffle_button.setIconSize(QSize(11, 11))
         self.shuffle_button.setFixedSize(30, 30)
         self.shuffle_button.setStyleSheet(self.get_button_style())
@@ -447,7 +447,7 @@ class MainWindow(QMainWindow):
         playlist_header.addWidget(self.shuffle_button)
         
         self.remove_button = QPushButton()
-        self.remove_button.setIcon(create_icon("icons_svg/remove_track.svg"))
+        self.remove_button.setIcon(create_icon("icons_svg/remove_track.svg", "#ffffff"))
         self.remove_button.setIconSize(QSize(11, 11))
         self.remove_button.setFixedSize(30, 30)
         self.remove_button.setStyleSheet(self.get_button_style())
@@ -456,7 +456,7 @@ class MainWindow(QMainWindow):
         playlist_header.addWidget(self.remove_button)
         
         self.clear_button = QPushButton()
-        self.clear_button.setIcon(create_icon("icons_svg/clear_playlist.svg"))
+        self.clear_button.setIcon(create_icon("icons_svg/clear_playlist.svg", "#ffffff"))
         self.clear_button.setIconSize(QSize(11, 11))
         self.clear_button.setFixedSize(30, 30)
         self.clear_button.setStyleSheet(self.get_button_style())
@@ -465,7 +465,7 @@ class MainWindow(QMainWindow):
         playlist_header.addWidget(self.clear_button)
 
         self.scroll_to_current_button = QPushButton()
-        self.scroll_to_current_button.setIcon(create_icon("icons_svg/locate_track.svg"))
+        self.scroll_to_current_button.setIcon(create_icon("icons_svg/locate_track.svg", "#ffffff"))
         self.scroll_to_current_button.setIconSize(QSize(11, 11))
         self.scroll_to_current_button.setFixedSize(30, 30)
         self.scroll_to_current_button.setStyleSheet(self.get_button_style())
@@ -512,7 +512,7 @@ class MainWindow(QMainWindow):
         buttons_layout.setSpacing(10)
 
         self.prev_button = QPushButton()
-        self.prev_button.setIcon(create_icon("icons_svg/previous.svg"))
+        self.prev_button.setIcon(create_icon("icons_svg/previous.svg", "#ffffff"))
         self.prev_button.setIconSize(QSize(14, 14))
         self.prev_button.setEnabled(False)
         self.prev_button.setFixedSize(40, 40)
@@ -520,7 +520,7 @@ class MainWindow(QMainWindow):
         buttons_layout.addWidget(self.prev_button)
 
         self.play_button = QPushButton()
-        self.play_button.setIcon(create_icon("icons_svg/play.svg"))
+        self.play_button.setIcon(create_icon("icons_svg/play.svg", "#ffffff"))
         self.play_button.setIconSize(QSize(14, 14))
         self.play_button.setEnabled(False)
         self.play_button.setFixedSize(40, 40)
@@ -528,7 +528,7 @@ class MainWindow(QMainWindow):
         buttons_layout.addWidget(self.play_button)
 
         self.next_button = QPushButton()
-        self.next_button.setIcon(create_icon("icons_svg/next.svg"))
+        self.next_button.setIcon(create_icon("icons_svg/next.svg", "#ffffff"))
         self.next_button.setIconSize(QSize(14, 14))
         self.next_button.setEnabled(False)
         self.next_button.setFixedSize(40, 40)
@@ -582,9 +582,9 @@ class MainWindow(QMainWindow):
                 self.play_button.setIcon(create_icon("icons_svg/play.svg", icon_color))
         else:
             if self.player.is_playing():
-                self.play_button.setIcon(create_icon("icons_svg/pause.svg"))
+                self.play_button.setIcon(create_icon("icons_svg/pause.svg", "#ffffff"))
             else:
-                self.play_button.setIcon(create_icon("icons_svg/play.svg"))
+                self.play_button.setIcon(create_icon("icons_svg/play.svg", "#ffffff"))
         
         if not self.player.current_track:
             self.progress_slider.setEnabled(False)
@@ -860,7 +860,7 @@ class MainWindow(QMainWindow):
 
         self.player.clear_playlist()
         self.playlist_list.clear()
-        self.play_button.setIcon(create_icon("icons_svg/play.svg"))
+        self.play_button.setIcon(create_icon("icons_svg/play.svg", "#ffffff"))
         self.play_button.setEnabled(False)
         self.progress_slider.setEnabled(False)
         self.progress_slider.setValue(0)
@@ -943,9 +943,9 @@ class MainWindow(QMainWindow):
     def _on_playback_state_changed(self, is_playing: bool) -> None:
         """Handle playback state changes."""
         if is_playing:
-            self.play_button.setIcon(create_icon("icons_svg/pause.svg"))
+            self.play_button.setIcon(create_icon("icons_svg/pause.svg", "#ffffff"))
         else:
-            self.play_button.setIcon(create_icon("icons_svg/play.svg"))
+            self.play_button.setIcon(create_icon("icons_svg/play.svg", "#ffffff"))
         self.progress_slider.setEnabled(is_playing)
 
     def add_to_playlist(self, track) -> None:
@@ -1090,14 +1090,14 @@ class MainWindow(QMainWindow):
     def _reset_button_styles(self) -> None:
         """Reset button styles to default."""
         # Update icons using the create_icon function
-        self.prev_button.setIcon(create_icon("icons_svg/previous.svg"))
-        self.play_button.setIcon(create_icon("icons_svg/play.svg"))
-        self.next_button.setIcon(create_icon("icons_svg/next.svg"))
-        self.add_button.setIcon(create_icon("icons_svg/add_to_playlist.svg"))
-        self.shuffle_button.setIcon(create_icon("icons_svg/shuffle_playlist.svg"))
-        self.remove_button.setIcon(create_icon("icons_svg/remove_track.svg"))
-        self.clear_button.setIcon(create_icon("icons_svg/clear_playlist.svg"))
-        self.scroll_to_current_button.setIcon(create_icon("icons_svg/locate_track.svg"))
+        self.prev_button.setIcon(create_icon("icons_svg/previous.svg", "#ffffff"))
+        self.play_button.setIcon(create_icon("icons_svg/play.svg", "#ffffff"))
+        self.next_button.setIcon(create_icon("icons_svg/next.svg", "#ffffff"))
+        self.add_button.setIcon(create_icon("icons_svg/add_to_playlist.svg", "#ffffff"))
+        self.shuffle_button.setIcon(create_icon("icons_svg/shuffle_playlist.svg", "#ffffff"))
+        self.remove_button.setIcon(create_icon("icons_svg/remove_track.svg", "#ffffff"))
+        self.clear_button.setIcon(create_icon("icons_svg/clear_playlist.svg", "#ffffff"))
+        self.scroll_to_current_button.setIcon(create_icon("icons_svg/locate_track.svg", "#ffffff"))
         
         # Reset button styles        
         self.play_button.setStyleSheet("""

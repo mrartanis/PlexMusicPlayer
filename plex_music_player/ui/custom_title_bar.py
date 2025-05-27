@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import QWidget, QHBoxLayout, QPushButton, QMenu
 from PyQt6.QtCore import Qt, QPoint, QSize
 from PyQt6.QtGui import QCursor, QAction, QIcon, QPixmap, QImage
 from plex_music_player.lib.utils import resource_path, read_resource_file, create_icon
+from plex_music_player.lib.color_utils import get_contrasting_text_color
 
 class CustomTitleBar(QWidget):
     def __init__(self, parent=None, color="#1e1e1e", button_color="#ffffff"):
@@ -132,12 +133,8 @@ class CustomTitleBar(QWidget):
         self._mouse_pos = None
 
     def _set_icons_with_current_color(self):
-        bg_color = self.close_button.palette().button().color().name()
-        def is_dark(color):
-            color = color.lstrip('#')
-            r, g, b = int(color[0:2], 16), int(color[2:4], 16), int(color[4:6], 16)
-            return (r*0.299 + g*0.587 + b*0.114) < 186
-        icon_color = "#ffffff" if is_dark(bg_color) else "#000000"
+        bg_color = self.close_button.palette().button().color()
+        icon_color = "#ffffff" if get_contrasting_text_color(bg_color).name() == "#ffffff" else "#000000"
         for btn, key in zip([self.close_button, self.min_button, self.max_button], ["close", "min", "max"]):
             icon_path = self._icon_paths[key].replace(resource_path(""), "")
             btn.setIcon(create_icon(icon_path, icon_color))
