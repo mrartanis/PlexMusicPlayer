@@ -126,7 +126,6 @@ def read_resource_file(relative_path):
 
 def create_icon(relative_path, color):
     """Creates a QIcon safely, compatible with PyInstaller, py2app и обычным запуском."""
-    logger.info(f"SVG called for {relative_path} with color {color}")
     path = resource_path(relative_path)
     logger.info(f"Creating icon from SVG: {path}")
     if ".svg" in path.lower():

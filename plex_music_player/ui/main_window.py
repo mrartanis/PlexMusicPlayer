@@ -755,6 +755,97 @@ class MainWindow(QMainWindow):
                 if hasattr(self, 'title_bar'):
                     self.title_bar.set_button_color(dominant_color.name(), text_color_str)
                     self.title_bar.update_icons()
+                # change main window background color depending on icon color
+                if icon_color == "#000000":
+                    main_bg = "#1c1c1c"
+                    main_text = "#ffffff"
+                else:
+                    main_bg = "#242424"
+                    main_text = "#ffffff"
+                self.setStyleSheet(f"""
+                    QMainWindow, QWidget {{
+                        background-color: {main_bg};
+                        color: {main_text};
+                    }}
+                    QPushButton {{
+                        background-color: #2d2d2d;
+                        border: none;
+                        border-radius: 3px;
+                        padding: 3px;
+                        color: {main_text};
+                    }}
+                    QPushButton:hover {{
+                        background-color: #3d3d3d;
+                    }}
+                    QPushButton:disabled {{
+                        background-color: #2d2d2d;
+                        color: #666666;
+                    }}
+                    QListWidget {{
+                        background-color: #2d2d2d;
+                        border: none;
+                        border-radius: 3px;
+                        padding: 3px;
+                        color: {main_text};
+                    }}
+                    QListWidget::item {{
+                        padding: 3px;
+                        border-radius: 2px;
+                    }}
+                    QListWidget::item:selected {{
+                        background-color: #444444;
+                    }}
+                    QListWidget::item:hover {{
+                        background-color: #3d3d3d;
+                    }}
+                    QLabel {{
+                        color: {main_text};
+                        font-size: 12px;
+                    }}
+                    QSlider::groove:horizontal {{
+                        border: none;
+                        height: 4px;
+                        background-color: #2d2d2d;
+                        border-radius: 2px;
+                    }}
+                    QSlider::handle:horizontal {{
+                        background-color: #444444;
+                        border: none;
+                        width: 12px;
+                        margin: -4px 0;
+                        border-radius: 6px;
+                    }}
+                    QSlider::sub-page:horizontal {{
+                        background-color: #444444;
+                        border-radius: 2px;
+                    }}
+                    #track_info {{
+                        font-size: 14px;
+                        line-height: 1.4;
+                        font-weight: 500;
+                        color: {main_text};
+                        padding: 10px;
+                        margin: 0 10px;
+                    }}
+                    #time_label {{
+                        font-size: 12px;
+                        color: #888888;
+                    }}
+                    #loading_progress {{
+                        background-color: #2d2d2d;
+                        border: none;
+                        border-radius: 3px;
+                        height: 2px;
+                        margin: 0px;
+                        text-align: center;
+                    }}
+                    #loading_progress::chunk {{
+                        background-color: #444444;
+                    }}
+                """)
+                # synchronize title bar background color with main window
+                if hasattr(self, 'title_bar'):
+                    self.title_bar.setStyleSheet(f"background-color: {main_bg};")
         else:
             self.cover_label.clear()
             # Reset to default styles if no cover
@@ -1089,6 +1180,88 @@ class MainWindow(QMainWindow):
 
     def _reset_button_styles(self) -> None:
         """Reset button styles to default."""
+        # Reset main window and widget background/text color to default
+        self.setStyleSheet("""
+            QMainWindow, QWidget {
+                background-color: #1e1e1e;
+                color: #ffffff;
+            }
+            QPushButton {
+                background-color: #2d2d2d;
+                border: none;
+                border-radius: 3px;
+                padding: 3px;
+                color: #ffffff;
+            }
+            QPushButton:hover {
+                background-color: #3d3d3d;
+            }
+            QPushButton:disabled {
+                background-color: #2d2d2d;
+                color: #666666;
+            }
+            QListWidget {
+                background-color: #2d2d2d;
+                border: none;
+                border-radius: 3px;
+                padding: 3px;
+                color: #ffffff;
+            }
+            QListWidget::item {
+                padding: 3px;
+                border-radius: 2px;
+            }
+            QListWidget::item:selected {
+                background-color: #444444;
+            }
+            QListWidget::item:hover {
+                background-color: #3d3d3d;
+            }
+            QLabel {
+                color: #ffffff;
+                font-size: 12px;
+            }
+            QSlider::groove:horizontal {
+                border: none;
+                height: 4px;
+                background-color: #2d2d2d;
+                border-radius: 2px;
+            }
+            QSlider::handle:horizontal {
+                background-color: #444444;
+                border: none;
+                width: 12px;
+                margin: -4px 0;
+                border-radius: 6px;
+            }
+            QSlider::sub-page:horizontal {
+                background-color: #444444;
+                border-radius: 2px;
+            }
+            #track_info {
+                font-size: 14px;
+                line-height: 1.4;
+                font-weight: 500;
+                color: #ffffff;
+                padding: 10px;
+                margin: 0 10px;
+            }
+            #time_label {
+                font-size: 12px;
+                color: #888888;
+            }
+            #loading_progress {
+                background-color: #2d2d2d;
+                border: none;
+                border-radius: 3px;
+                height: 2px;
+                margin: 0px;
+                text-align: center;
+            }
+            #loading_progress::chunk {
+                background-color: #444444;
+            }
+        """)
         # Update icons using the create_icon function
         self.prev_button.setIcon(create_icon("icons_svg/previous.svg", "#ffffff"))
         self.play_button.setIcon(create_icon("icons_svg/play.svg", "#ffffff"))
