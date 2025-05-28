@@ -1514,23 +1514,19 @@ class MainWindow(QMainWindow):
 
     def mouseMoveEvent(self, event):
         if self._resizing and self._resize_edge:
-            # Calculate raw delta
-            raw_delta = event.globalPosition().toPoint() - self._mouse_pos
-            
-            # Only consider delta in the resize direction
-            delta_x = raw_delta.x() if "left" in self._resize_edge or "right" in self._resize_edge else 0
-            delta_y = raw_delta.y() if "top" in self._resize_edge or "bottom" in self._resize_edge else 0
-            
+            mouse_pos = event.globalPosition().toPoint()
             geom = self._start_geom
             new_geom = geom
+            
             if "left" in self._resize_edge:
-                new_geom.setLeft(geom.left() + delta_x)
+                new_geom.setLeft(mouse_pos.x())
             if "right" in self._resize_edge:
-                new_geom.setRight(geom.right() + delta_x)
+                new_geom.setRight(mouse_pos.x())
             if "top" in self._resize_edge:
-                new_geom.setTop(geom.top() + delta_y)
+                new_geom.setTop(mouse_pos.y())
             if "bottom" in self._resize_edge:
-                new_geom.setBottom(geom.bottom() + delta_y)
+                new_geom.setBottom(mouse_pos.y())
+                
             self.setGeometry(new_geom)
             event.accept()
             return
