@@ -11,6 +11,7 @@ from .logger import Logger
 from .cover_cache import cover_cache
 from pathlib import Path
 import re
+from functools import lru_cache
 
 logger = Logger()
 
@@ -124,7 +125,8 @@ def read_resource_file(relative_path):
         logger.error(f"Error reading resource file {path}: {e}")
         return None
 
-def create_icon(relative_path, color):
+@lru_cache(maxsize=128)
+def create_icon(relative_path: str, color: str) -> QIcon:
     """Creates a QIcon safely, compatible with PyInstaller, py2app и обычным запуском."""
     path = resource_path(relative_path)
     logger.info(f"Creating icon from SVG: {path}")

@@ -69,7 +69,7 @@ class MainWindow(QMainWindow):
         self.setup_ui(show_connect_only=True)
         
         # Set minimum size and store initial width
-        self.setMinimumSize(300, 700)
+        self.setMinimumSize(200, 700)
         self.initial_width = self.width()
         self.is_wide_mode = self.width() >= self.initial_width * 1.5
         
