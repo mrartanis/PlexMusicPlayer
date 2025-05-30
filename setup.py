@@ -18,8 +18,14 @@ DATA_FILES = [
     ])
 ]
 PY2APP_OPTIONS = {
-    'packages': ['PyQt6', 'plexapi', 'requests', 'plex_music_player', 'plex_music_player.ui', 'plex_music_player.models', 'plex_music_player.lib'],
-    'includes': ['PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets'],
+    'packages': [
+        'PyQt6', 'plexapi', 'requests', 'plex_music_player', 'plex_music_player.ui', 'plex_music_player.models', 'plex_music_player.lib',
+        'vlc'
+    ],
+    'includes': [
+        'PyQt6.QtCore', 'PyQt6.QtGui', 'PyQt6.QtWidgets',
+        'vlc'
+    ],
     'iconfile': 'MusicApp.icns',
     'plist': {
         'CFBundleName': 'Plex Music Player',
