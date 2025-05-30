@@ -1,4 +1,5 @@
 from setuptools import setup
+import os
 
 APP = ['plex_music_player/__main__.py']
 DATA_FILES = [
@@ -17,6 +18,7 @@ DATA_FILES = [
         "plex_music_player/icons_svg/window-close.svg",
     ])
 ]
+VLC_LIB_PATH = '/Applications/VLC.app/Contents/MacOS/lib'
 PY2APP_OPTIONS = {
     'packages': [
         'PyQt6', 'plexapi', 'requests', 'plex_music_player', 'plex_music_player.ui', 'plex_music_player.models', 'plex_music_player.lib',
@@ -35,7 +37,11 @@ PY2APP_OPTIONS = {
         'CFBundleShortVersionString': '1.0.0',
         'NSHumanReadableCopyright': '© 2024'
     },
-    'resources': ['plex_music_player/icons_svg'],
+    'resources': [
+        'plex_music_player/icons_svg',
+        os.path.join(VLC_LIB_PATH, 'libvlc.dylib'),
+        os.path.join(VLC_LIB_PATH, 'libvlccore.dylib'),
+    ],
 }
 
 setup(
