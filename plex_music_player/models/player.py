@@ -11,12 +11,13 @@ from PyQt6.QtCore import (
     pyqtSlot, QMutex, Qt, QModelIndex, QAbstractListModel
 )
 from PyQt6.QtCore import Qt as QtCore
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6.QtMultimedia import QAudioOutput
 import random
 import sys
 from plex_music_player.lib.media_center import get_media_center
 from plex_music_player.lib.logger import Logger
 from plex_music_player.lib.lastfm import LastFMScrobbler
+from plex_music_player.models.vlc_player import VlcMediaPlayer
 
 logger = Logger()
 
@@ -334,8 +335,8 @@ class Player(QObject):
     def __init__(self):
         super().__init__()
         self._playlist_lock = QMutex()  # Add mutex for thread safety
-        # QMediaPlayer and QAudioOutput will be created in initialize_player()
-        self._player: Optional[QMediaPlayer] = None
+        # VlcMediaPlayer and QAudioOutput will be created in initialize_player()
+        self._player: Optional[VlcMediaPlayer] = None
         self._audio_output: Optional[QAudioOutput] = None
         
         # Plex data
@@ -394,12 +395,11 @@ class Player(QObject):
     @pyqtSlot()
     def initialize_player(self) -> None:
         """
-        Initialize QMediaPlayer and QAudioOutput in this thread.
+        Initialize VlcMediaPlayer and QAudioOutput in this thread.
         This ensures that all playback objects work within the same thread.
         """
-        self._player = QMediaPlayer(self)
+        self._player = VlcMediaPlayer(self)
         self._audio_output = QAudioOutput(self)
-        self._player.setAudioOutput(self._audio_output)
         # Connect signals
         self._player.positionChanged.connect(self._on_position_changed)
         self._player.durationChanged.connect(self._on_duration_changed)
@@ -626,7 +626,7 @@ class Player(QObject):
                     self.connection_error.emit(f"Failed to get stream URL: {str(e)}")
                     return None
 
-    def _on_playback_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
+    def _on_playback_state_changed(self, state: VlcMediaPlayer.PlaybackState) -> None:
         """Handle playback state changes safely."""
         logger.debug(f"State changed to: {state}")
         
@@ -637,7 +637,7 @@ class Player(QObject):
             
         logger.debug(f"Current position: {self._player.position()}")
         
-        if state == QMediaPlayer.PlaybackState.StoppedState:
+        if state == VlcMediaPlayer.PlaybackState.StoppedState:
             current_pos = self.get_current_position()
             logger.debug(f"Current position on stop: {current_pos}")
             # Save position before stopping
@@ -645,8 +645,8 @@ class Player(QObject):
             logger.debug(f"Saved last position: {self._last_position}")
             
             # Check if this was an error stop
-            error = self._player.error()
-            if error != QMediaPlayer.Error.NoError:
+            error = self._player.error() if hasattr(self, '_player') and self._player else VlcMediaPlayer.Error.NoError
+            if error != VlcMediaPlayer.Error.NoError:
                 error_string = self._player.errorString()
                 logger.error(f"Playback stopped due to error: {error_string}")
                 
@@ -682,7 +682,7 @@ class Player(QObject):
             else:
                 logger.debug("No current track available.")
                 
-        is_playing = state == QMediaPlayer.PlaybackState.PlayingState
+        is_playing = state == VlcMediaPlayer.PlaybackState.PlayingState
         logger.debug(f"Player state: {'Playing' if is_playing else 'Paused/Stopped'}")
         self.playback_state_changed.emit(is_playing)
         QTimer.singleShot(100, self._update_media_center)
@@ -700,7 +700,7 @@ class Player(QObject):
         """Handle duration changes."""
         self.duration_changed.emit(duration)
 
-    def _on_error_occurred(self, error: QMediaPlayer.Error, error_string: str) -> None:
+    def _on_error_occurred(self, error: VlcMediaPlayer.Error, error_string: str) -> None:
         """Handle media player errors."""
         logger.error(f"Media player error: {error}, {error_string}")
         logger.error(f"Current track: {self.current_track.title if self.current_track else 'None'}")
@@ -709,8 +709,8 @@ class Player(QObject):
         logger.error(f"Current duration: {self._player.duration() if self._player else 'No player'}")
         logger.error(f"Media status: {self._player.mediaStatus() if self._player else 'No player'}")
         
-        if error != QMediaPlayer.Error.NoError:
-            if error == QMediaPlayer.Error.NetworkError:
+        if error != VlcMediaPlayer.Error.NoError:
+            if error == VlcMediaPlayer.Error.NetworkError:
                 logger.debug("Network error occurred, attempting to recover...")
                 if self._retry_connection():
                     # If connection is restored, try to refresh track info and retry
@@ -728,7 +728,7 @@ class Player(QObject):
                 else:
                     # If reconnection failed, try next track
                     self.play_next_track()
-            elif error == QMediaPlayer.Error.FormatError:
+            elif error == VlcMediaPlayer.Error.FormatError:
                 logger.debug("Format error occurred, skipping track...")
                 self.play_next_track()
             elif "TLS/SSL" in error_string or "SSL" in error_string:
@@ -843,14 +843,14 @@ class Player(QObject):
         logger.debug(f"Current position: {self._player.position()}")
         logger.debug(f"Last position: {self._last_position}")
         
-        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+        if self._player.playbackState() == VlcMediaPlayer.PlaybackState.PlayingState:
             logger.debug("Player is playing, pausing...")
             self._player.pause()
             self.playback_state_changed.emit(False)
             logger.debug("Player paused")
         else:
             logger.debug("Player is not playing, starting playback...")
-            if self._player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
+            if self._player.playbackState() == VlcMediaPlayer.PlaybackState.StoppedState:
                 logger.debug("Player is stopped, setting position to last position")
                 self._player.setPosition(self._last_position or 0)
                 logger.debug(f"Position set to: {self._player.position()}")
@@ -910,7 +910,7 @@ class Player(QObject):
         try:
             logger.debug(f"Current player state before stop: {self._player.playbackState()}")
             # Stop any current playback
-            if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            if self._player.playbackState() == VlcMediaPlayer.PlaybackState.PlayingState:
                 logger.debug("Stopping current playback")
                 self._player.stop()
                 logger.debug(f"Current player state after stop: {self._player.playbackState()}")
@@ -1510,35 +1510,35 @@ class Player(QObject):
             self._connection_check_timer.stop()
             self._connection_check_timer = None
 
-    def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
+    def _on_media_status_changed(self, status: VlcMediaPlayer.MediaStatus) -> None:
         """Handle media status changes."""
         logger.debug(f"Media status changed to: {status}")
         
-        if status == QMediaPlayer.MediaStatus.LoadedMedia:
+        if status == VlcMediaPlayer.MediaStatus.LoadedMedia:
             logger.debug("Media loaded successfully")
             self._media_loaded = True
             self._playback_attempts = 0
             # Emit signal that playback is ready
             self.playback_started.emit()
             
-        elif status == QMediaPlayer.MediaStatus.InvalidMedia:
+        elif status == VlcMediaPlayer.MediaStatus.InvalidMedia:
             logger.error("Invalid media")
             self._playback_error = True
             self.playback_failed.emit("Invalid media format")
             # Try next track
             self.play_next_track()
             
-        elif status == QMediaPlayer.MediaStatus.LoadingMedia:
+        elif status == VlcMediaPlayer.MediaStatus.LoadingMedia:
             logger.debug("Media is loading...")
             
-        elif status == QMediaPlayer.MediaStatus.NoMedia:
+        elif status == VlcMediaPlayer.MediaStatus.NoMedia:
             logger.debug("No media loaded")
             
-        elif status == QMediaPlayer.MediaStatus.StalledMedia:
+        elif status == VlcMediaPlayer.MediaStatus.StalledMedia:
             logger.debug("Media playback stalled")
             # This can happen during buffering, no need to take action yet
             
-        elif status == QMediaPlayer.MediaStatus.BufferedMedia:
+        elif status == VlcMediaPlayer.MediaStatus.BufferedMedia:
             logger.debug("Media is buffered")
             if not self._media_loaded:
                 # If we haven't marked the media as loaded yet, do it now
@@ -1554,7 +1554,7 @@ class Player(QObject):
         if not self._player:
             return
 
-        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+        if self._player.playbackState() == VlcMediaPlayer.PlaybackState.PlayingState:
             logger.debug("Playback confirmed started")
             self.playback_started.emit()
             return
@@ -1594,7 +1594,7 @@ class Player(QObject):
         """Check if playback is active."""
         if self._player is None:
             return False
-        return self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        return self._player.playbackState() == VlcMediaPlayer.PlaybackState.PlayingState
 
     @pyqtSlot(object)
     def add_to_playlist(self, track: Track) -> None:
@@ -1775,7 +1775,7 @@ class Player(QObject):
             QThread.msleep(100)
             
             # Create new player and audio output
-            self._player = QMediaPlayer(self)
+            self._player = VlcMediaPlayer(self)
             self._audio_output = QAudioOutput(self)
             self._player.setAudioOutput(self._audio_output)
             
@@ -1905,6 +1905,6 @@ class PlayerThread(QThread):
     def run(self):
         # Create the Player object in this thread (so its children are created in the correct thread)
         self.player = Player()
-        self.player.initialize_player()  # This initializes QMediaPlayer, etc.
+        self.player.initialize_player()  # This initializes VlcMediaPlayer, etc.
         self.player_ready.emit(self.player)  # Notify main thread that player is ready
         self.exec()

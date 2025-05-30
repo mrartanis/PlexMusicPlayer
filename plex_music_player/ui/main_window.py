@@ -21,7 +21,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
 )
 from PyQt6.QtGui import QIcon, QImage, QPixmap, QAction
-from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize
+from PyQt6.QtCore import Qt, QTimer, pyqtSlot, QSize, QMetaObject
 from plex_music_player.models.player import PlayerThread
 from plex_music_player.ui.dialogs import ConnectionDialog, AddTracksDialog, LastFMSettingsDialog
 from plex_music_player.lib.utils import format_time, format_track_info, load_cover_image, read_resource_file
@@ -70,6 +70,7 @@ class MainWindow(QMainWindow):
         
         # Set minimum size and store initial width
         self.setMinimumSize(200, 700)
+        self.resize(300, self.height())
         self.initial_width = self.width()
         self.is_wide_mode = self.width() >= self.initial_width * 1.5
         
@@ -970,15 +971,7 @@ class MainWindow(QMainWindow):
             return
         indices = [self.playlist_list.row(item) for item in selected_items]
 
-        # If the currently playing track is being removed, stop playback safely
-        if self.player.current_track and self.player.current_playlist_index in indices:
-            self.player.stop()  # Stop playback safely
-            self.update_play_button(False)
-            self.progress_slider.setValue(0)
-            self.time_label.setText("00:00 / 00:00")
-            self.track_info.setText("No track")
-            self.cover_label.clear()
-
+        # Remove tracks from playlist
         self.player.remove_from_playlist(indices)
         for index in sorted(indices, reverse=True):
             self.playlist_list.takeItem(index)
@@ -1107,7 +1100,8 @@ class MainWindow(QMainWindow):
 
     def change_volume(self, value: int) -> None:
         """Change the player's volume."""
-        self.player._audio_output.setVolume(value / 100.0)
+        if hasattr(self, 'player') and self.player._player:
+            self.player._player.setVolume(value)
     
     def get_button_style(self) -> str:
         """Return the style for playlist control buttons."""
