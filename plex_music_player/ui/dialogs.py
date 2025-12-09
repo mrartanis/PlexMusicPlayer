@@ -1,5 +1,6 @@
 import os
 import json
+import webbrowser
 from PyQt6.QtWidgets import (
     QDialog,
     QVBoxLayout,
@@ -11,6 +12,10 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QListWidget,
     QCheckBox,
+    QStackedWidget,
+    QProgressBar,
+    QFrame,
+    QApplication,
 )
 from plexapi.server import PlexServer
 from plexapi.audio import Track
@@ -18,6 +23,7 @@ from plexapi.exceptions import Unauthorized, NotFound
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QObject
 from ..models.player import TrackLoader, ArtistLoader
 from ..lib.logger import Logger
+from ..lib.plex_auth import PlexAuthWorker
 from plex_music_player.lib.lastfm_auth_server import LastFMAuthServer, open_auth_url
 
 logger = Logger()
@@ -26,52 +32,266 @@ class ConnectionDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.plex = None
+        self.worker = None
+        self.resources = []
+        self.auth_url = None
         self.setup_ui()
-        
-        # Load saved credentials
-        try:
-            config_path = os.path.expanduser("~/.config/plex_music_player/config.json")
-            if os.path.exists(config_path):
-                with open(config_path, "r") as f:
-                    config = json.load(f)
-                    if 'plex' in config:
-                        self.url_edit.setText(config['plex']['url'])
-                        self.token_edit.setText(config['plex']['token'])
-        except Exception as e:
-            logger.error(f"Error loading credentials: {e}")
+        self.load_config()
 
     def setup_ui(self):
         self.setWindowTitle("Connect to Plex")
+        self.setMinimumWidth(400)
+        self.setMinimumHeight(300)
         layout = QVBoxLayout(self)
 
-        # Server URL
+        self.stacked_widget = QStackedWidget()
+        layout.addWidget(self.stacked_widget)
+
+        # Page 1: Login Options
+        self.page_login = QFrame()
+        login_layout = QVBoxLayout(self.page_login)
+        
+        login_label = QLabel("Welcome to Plex Music Player")
+        login_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        login_label.setStyleSheet("font-size: 18px; font-weight: bold; margin-bottom: 20px;")
+        login_layout.addWidget(login_label)
+        
+        self.sign_in_button = QPushButton("Sign In with Plex")
+        self.sign_in_button.clicked.connect(self.start_pin_auth)
+        self.sign_in_button.setMinimumHeight(40)
+        self.sign_in_button.setStyleSheet("background-color: #e5a00d; color: black; font-weight: bold;")
+        login_layout.addWidget(self.sign_in_button)
+        
+        self.manual_button = QPushButton("Manual Connection")
+        self.manual_button.clicked.connect(lambda: self.stacked_widget.setCurrentWidget(self.page_manual))
+        login_layout.addWidget(self.manual_button)
+        
+        login_layout.addStretch()
+        
+        close_button = QPushButton("Close")
+        close_button.clicked.connect(self.reject)
+        login_layout.addWidget(close_button)
+        
+        self.stacked_widget.addWidget(self.page_login)
+
+        # Page 2: PIN Flow
+        self.page_pin = QFrame()
+        pin_layout = QVBoxLayout(self.page_pin)
+        
+        pin_info = QLabel("Visit plex.tv/link and enter this code:")
+        pin_info.setWordWrap(True)
+        pin_info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        pin_layout.addWidget(pin_info)
+        
+        self.pin_code_label = QLabel("Loading...")
+        self.pin_code_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.pin_code_label.setStyleSheet("font-size: 32px; font-weight: bold; margin: 20px; color: #e5a00d;")
+        self.pin_code_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.pin_code_label.setMinimumHeight(60)
+        self.pin_code_label.setMinimumWidth(200)
+        pin_layout.addWidget(self.pin_code_label)
+        
+        self.open_browser_button = QPushButton("Open Browser")
+        self.open_browser_button.clicked.connect(self.open_browser)
+        pin_layout.addWidget(self.open_browser_button)
+        
+        pin_layout.addStretch()
+        
+        self.cancel_pin_button = QPushButton("Cancel")
+        self.cancel_pin_button.clicked.connect(self.cancel_pin_auth)
+        pin_layout.addWidget(self.cancel_pin_button)
+        
+        self.stacked_widget.addWidget(self.page_pin)
+
+        # Page 3: Server Selection
+        self.page_servers = QFrame()
+        servers_layout = QVBoxLayout(self.page_servers)
+        
+        servers_layout.addWidget(QLabel("Select Server:"))
+        self.server_combo = QComboBox()
+        servers_layout.addWidget(self.server_combo)
+        
+        self.connection_status_label = QLabel("")
+        self.connection_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        servers_layout.addWidget(self.connection_status_label)
+        
+        self.connect_server_button = QPushButton("Connect")
+        self.connect_server_button.clicked.connect(self.connect_selected_server)
+        servers_layout.addWidget(self.connect_server_button)
+        
+        servers_layout.addStretch()
+        
+        back_server_button = QPushButton("Back")
+        back_server_button.clicked.connect(lambda: self.stacked_widget.setCurrentWidget(self.page_login))
+        servers_layout.addWidget(back_server_button)
+        
+        self.stacked_widget.addWidget(self.page_servers)
+
+        # Page 4: Manual Connection
+        self.page_manual = QFrame()
+        manual_layout = QVBoxLayout(self.page_manual)
+        
+        # URL
         url_layout = QHBoxLayout()
         url_label = QLabel("URL:")
         self.url_edit = QLineEdit()
         self.url_edit.setPlaceholderText("http://localhost:32400")
         url_layout.addWidget(url_label)
         url_layout.addWidget(self.url_edit)
-        layout.addLayout(url_layout)
-
+        manual_layout.addLayout(url_layout)
+        
         # Token
         token_layout = QHBoxLayout()
         token_label = QLabel("Token:")
         self.token_edit = QLineEdit()
         token_layout.addWidget(token_label)
         token_layout.addWidget(self.token_edit)
-        layout.addLayout(token_layout)
+        manual_layout.addLayout(token_layout)
+        
+        manual_layout.addStretch()
+        
+        manual_buttons = QHBoxLayout()
+        self.manual_connect_button = QPushButton("Connect")
+        self.manual_connect_button.clicked.connect(self.try_manual_connect)
+        manual_buttons.addWidget(self.manual_connect_button)
+        
+        self.manual_back_button = QPushButton("Back")
+        self.manual_back_button.clicked.connect(lambda: self.stacked_widget.setCurrentWidget(self.page_login))
+        manual_buttons.addWidget(self.manual_back_button)
+        
+        manual_layout.addLayout(manual_buttons)
+        self.stacked_widget.addWidget(self.page_manual)
 
-        # Buttons
-        buttons_layout = QHBoxLayout()
-        self.connect_button = QPushButton("Connect")
-        self.connect_button.clicked.connect(self.try_connect)
-        self.cancel_button = QPushButton("Cancel")
-        self.cancel_button.clicked.connect(self.reject)
-        buttons_layout.addWidget(self.connect_button)
-        buttons_layout.addWidget(self.cancel_button)
-        layout.addLayout(buttons_layout)
+    def load_config(self):
+        try:
+            config_path = os.path.expanduser("~/.config/plex_music_player/config.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r") as f:
+                    config = json.load(f)
+                    if 'plex' in config:
+                        self.url_edit.setText(config['plex'].get('url', ''))
+                        self.token_edit.setText(config['plex'].get('token', ''))
+        except Exception as e:
+            logger.error(f"Error loading credentials: {e}")
 
-    def try_connect(self):
+    def start_pin_auth(self):
+        self.stacked_widget.setCurrentWidget(self.page_pin)
+        self.pin_code_label.setText("Loading...")
+        self.open_browser_button.setEnabled(False)
+        
+        if self.worker:
+            self.worker.stop()
+            self.worker.deleteLater()
+        
+        self.worker = PlexAuthWorker()
+        # Use QueuedConnection explicitly to ensure signals are processed in main thread
+        self.worker.pin_created.connect(self.on_pin_created, Qt.ConnectionType.QueuedConnection)
+        self.worker.authorized.connect(self.on_authorized, Qt.ConnectionType.QueuedConnection)
+        self.worker.error.connect(self.on_worker_error, Qt.ConnectionType.QueuedConnection)
+        self.worker.resources_loaded.connect(self.on_resources_loaded, Qt.ConnectionType.QueuedConnection)
+        self.worker.connection_found.connect(self.on_connection_found, Qt.ConnectionType.QueuedConnection)
+        
+        self.worker.request_pin()
+
+    def cancel_pin_auth(self):
+        if self.worker:
+            self.worker.stop()
+        self.stacked_widget.setCurrentWidget(self.page_login)
+
+    def open_browser(self):
+        if self.auth_url:
+            webbrowser.open(self.auth_url)
+
+    def on_pin_created(self, code, url):
+        logger.debug(f"on_pin_created called with code: {code}")
+        # Ensure we're on the PIN page
+        self.stacked_widget.setCurrentWidget(self.page_pin)
+        # Update the label immediately
+        self.pin_code_label.setText(code)
+        self.pin_code_label.show()
+        # Set other properties
+        self.auth_url = url
+        self.open_browser_button.setEnabled(True)
+        # Force immediate UI update
+        QApplication.processEvents()
+        logger.debug(f"PIN label text set to: {self.pin_code_label.text()}, visible: {self.pin_code_label.isVisible()}, current widget: {self.stacked_widget.currentWidget()}")
+
+    def on_authorized(self, token, username):
+        logger.debug(f"Authorized! Token received, username: {username if username else 'will be fetched later'}")
+        self.stacked_widget.setCurrentWidget(self.page_servers)
+        self.connection_status_label.setText("Loading servers...")
+        self.connect_server_button.setEnabled(False)
+        
+        # Get resources (this will create account in worker thread when needed)
+        self.worker.get_resources()
+
+    def on_resources_loaded(self, resources):
+        self.resources = resources
+        self.server_combo.clear()
+        if not resources:
+            self.connection_status_label.setText("No servers found")
+            return
+            
+        for resource in resources:
+            self.server_combo.addItem(resource.name)
+        
+        self.connection_status_label.setText("")
+        self.connect_server_button.setEnabled(True)
+
+    def connect_selected_server(self):
+        if not self.resources:
+            return
+            
+        index = self.server_combo.currentIndex()
+        if index < 0:
+            return
+            
+        resource = self.resources[index]
+        self.connection_status_label.setText(f"Connecting to {resource.name}...")
+        self.connect_server_button.setEnabled(False)
+        self.server_combo.setEnabled(False)
+        
+        # Test connection
+        self.worker.test_connection(resource)
+
+    def on_connection_found(self, name, url, token):
+        logger.debug(f"Connected to {name} at {url}")
+        self.connection_status_label.setText("Connection successful!")
+        
+        # Connect player
+        if hasattr(self.parent(), 'player'):
+            self.parent().player.connect_server(url, token)
+            
+        # We should probably save the config here too, but player.connect_server doesn't save automatically?
+        # Player.connect_server just connects.
+        # Player.save_config() saves current config.
+        # We should update the player's config manually if needed or rely on player to save if it does.
+        # Looking at player.py: connect_server doesn't save.
+        # But we can call self.parent().player.save_config() after ensuring player has the data.
+        # Player.connect_server sets self.plex.
+        # Player.config() uses self.plex._baseurl and self.plex._token.
+        # So saving config after connect_server should work.
+        
+        try:
+            if hasattr(self.parent(), 'player'):
+                self.parent().player.save_config()
+        except Exception as e:
+            logger.error(f"Error saving config: {e}")
+            
+        self.accept()
+
+    def on_worker_error(self, error_msg):
+        logger.error(f"Worker error: {error_msg}")
+        # If we are in PIN page, show error there or alert
+        if self.stacked_widget.currentWidget() == self.page_pin:
+             QMessageBox.warning(self, "Error", f"Authentication error: {error_msg}")
+             self.cancel_pin_auth()
+        elif self.stacked_widget.currentWidget() == self.page_servers:
+             self.connection_status_label.setText(f"Error: {error_msg}")
+             self.connect_server_button.setEnabled(True)
+             self.server_combo.setEnabled(True)
+
+    def try_manual_connect(self):
         url = self.url_edit.text().strip()
         token = self.token_edit.text().strip()
 
@@ -85,6 +305,7 @@ class ConnectionDialog(QDialog):
             # Save credentials in main window
             if hasattr(self.parent(), 'player'):
                 self.parent().player.connect_server(url, token)
+                self.parent().player.save_config() # Save manually
             self.accept()
         except Unauthorized:
             QMessageBox.critical(self, "Error", "Invalid token")
@@ -92,6 +313,10 @@ class ConnectionDialog(QDialog):
             QMessageBox.critical(self, "Error", "Server not found")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Connection error: {str(e)}")
+
+    def closeEvent(self, event):
+        self.cancel_pin_auth()
+        super().closeEvent(event)
 
 
 class AddTracksDialog(QDialog):

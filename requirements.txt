@@ -1,7 +1,7 @@
 PyQt6>=6.4.0
 plexapi>=4.15.0
 requests>=2.31.0
-setuptools
+setuptools<61.0.0
 numpy>=1.20.0
 scikit-learn>=1.0.0
 py2app; sys_platform == 'darwin'
