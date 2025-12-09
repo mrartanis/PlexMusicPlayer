@@ -64,9 +64,9 @@ jobs:
         arch: [x86_64, arm64]
         include:
           - arch: x86_64
-            runs-on: macos-13
+            runs-on: macos-15
           - arch: arm64
-            runs-on: macos-14
+            runs-on: macos-15
     runs-on: ${{ matrix.runs-on }}
     steps:
       - uses: actions/checkout@v4

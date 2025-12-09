@@ -51,5 +51,4 @@ setup(
     app=APP,
     data_files=DATA_FILES,
     options={'py2app': PY2APP_OPTIONS},
-    install_requires=['PyQt6', 'plexapi', 'requests'],
 )
