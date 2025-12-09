@@ -1,9 +1,12 @@
 import uuid
 import requests
+import urllib3
 from concurrent.futures import ThreadPoolExecutor
 from PyQt6.QtCore import pyqtSignal, QThread
 from plexapi.myplex import MyPlexAccount, MyPlexPinLogin
 from .logger import Logger
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 logger = Logger()
 
@@ -46,6 +49,9 @@ class PlexAuthWorker(QThread):
             logger.debug(f"Requesting PIN with client identifier: {self.client_identifier}")
             headers = {'X-Plex-Client-Identifier': self.client_identifier}
             
+            session = requests.Session()
+            session.verify = False
+            
             # Retry mechanism for getting PIN
             max_retries = 3
             code = None
@@ -53,7 +59,7 @@ class PlexAuthWorker(QThread):
             
             for attempt in range(max_retries):
                 try:
-                    self.pin_login = MyPlexPinLogin(headers=headers, oauth=False)
+                    self.pin_login = MyPlexPinLogin(session=session, headers=headers, oauth=False)
                     code = self.pin_login.pin
                     if code:
                         break
