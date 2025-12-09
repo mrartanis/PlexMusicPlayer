@@ -129,29 +129,32 @@ jobs:
           path: artifacts
       - name: Prepare artifacts for release
         run: |
+          echo "=== Artifacts structure ==="
+          find artifacts -type f -name "*.zip" || true
+          find artifacts -type f || true
+          ls -laR artifacts/ || true
+          echo "=== Creating release directory ==="
           mkdir -p artifacts_release
-          # actions/download-artifact creates subdirectories, move files to root
-          if [ -f artifacts/PlexMusicPlayer_linux_x86_64/PlexMusicPlayer_linux_x86_64.zip ]; then
-            cp artifacts/PlexMusicPlayer_linux_x86_64/PlexMusicPlayer_linux_x86_64.zip artifacts_release/
-          elif [ -f artifacts/PlexMusicPlayer_linux_x86_64.zip ]; then
-            cp artifacts/PlexMusicPlayer_linux_x86_64.zip artifacts_release/
-          fi
-          if [ -f artifacts/PlexMusicPlayer_windows_x86-64/PlexMusicPlayer_windows_x86-64.zip ]; then
-            cp artifacts/PlexMusicPlayer_windows_x86-64/PlexMusicPlayer_windows_x86-64.zip artifacts_release/
-          elif [ -f artifacts/PlexMusicPlayer_windows_x86-64.zip ]; then
-            cp artifacts/PlexMusicPlayer_windows_x86-64.zip artifacts_release/
-          fi
-          if [ -f artifacts/PlexMusicPlayer_macos_x86_64/PlexMusicPlayer_macos_x86_64.zip ]; then
-            cp artifacts/PlexMusicPlayer_macos_x86_64/PlexMusicPlayer_macos_x86_64.zip artifacts_release/
-          elif [ -f artifacts/PlexMusicPlayer_macos_x86_64.zip ]; then
-            cp artifacts/PlexMusicPlayer_macos_x86_64.zip artifacts_release/
-          fi
-          if [ -f artifacts/PlexMusicPlayer_macos_arm64/PlexMusicPlayer_macos_arm64.zip ]; then
-            cp artifacts/PlexMusicPlayer_macos_arm64/PlexMusicPlayer_macos_arm64.zip artifacts_release/
-          elif [ -f artifacts/PlexMusicPlayer_macos_arm64.zip ]; then
-            cp artifacts/PlexMusicPlayer_macos_arm64.zip artifacts_release/
-          fi
+          # actions/download-artifact creates subdirectories, find and copy all zip files
+          find artifacts -name "*.zip" -type f -exec cp {} artifacts_release/ \;
+          echo "=== Release artifacts ==="
           ls -la artifacts_release/
+          if [ ! -f artifacts_release/PlexMusicPlayer_linux_x86_64.zip ]; then
+            echo "ERROR: Linux artifact not found!"
+            exit 1
+          fi
+          if [ ! -f artifacts_release/PlexMusicPlayer_windows_x86-64.zip ]; then
+            echo "ERROR: Windows artifact not found!"
+            exit 1
+          fi
+          if [ ! -f artifacts_release/PlexMusicPlayer_macos_x86_64.zip ]; then
+            echo "ERROR: macOS x86_64 artifact not found!"
+            exit 1
+          fi
+          if [ ! -f artifacts_release/PlexMusicPlayer_macos_arm64.zip ]; then
+            echo "ERROR: macOS arm64 artifact not found!"
+            exit 1
+          fi
       - name: Generate Changelog
         id: changelog
         uses: actions/github-script@v7
