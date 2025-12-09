@@ -209,11 +209,18 @@ class ConnectionDialog(QDialog):
         # Update the label immediately
         self.pin_code_label.setText(code)
         self.pin_code_label.show()
+        # Force update on macOS - sometimes needs explicit update/repaint
+        self.pin_code_label.update()
+        self.pin_code_label.repaint()
+        self.page_pin.update()
+        self.page_pin.repaint()
         # Set other properties
         self.auth_url = url
         self.open_browser_button.setEnabled(True)
         # Force immediate UI update
         QApplication.processEvents()
+        # Additional update after processing events (helps on macOS)
+        QTimer.singleShot(50, lambda: (self.pin_code_label.update(), self.pin_code_label.repaint()))
         logger.debug(f"PIN label text set to: {self.pin_code_label.text()}, visible: {self.pin_code_label.isVisible()}, current widget: {self.stacked_widget.currentWidget()}")
 
     def on_authorized(self, token, username):
