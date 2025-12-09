@@ -45,8 +45,28 @@ class PlexAuthWorker(QThread):
         try:
             logger.debug(f"Requesting PIN with client identifier: {self.client_identifier}")
             headers = {'X-Plex-Client-Identifier': self.client_identifier}
-            self.pin_login = MyPlexPinLogin(headers=headers, oauth=False)
-            code = self.pin_login.pin
+            
+            # Retry mechanism for getting PIN
+            max_retries = 3
+            code = None
+            auth_url = None
+            
+            for attempt in range(max_retries):
+                try:
+                    self.pin_login = MyPlexPinLogin(headers=headers, oauth=False)
+                    code = self.pin_login.pin
+                    if code:
+                        break
+                    logger.debug(f"Failed to get PIN, attempt {attempt + 1}/{max_retries}")
+                    self.msleep(1000)
+                except Exception as e:
+                    logger.error(f"Error in PIN request attempt {attempt + 1}: {e}")
+                    if attempt == max_retries - 1:
+                        raise
+            
+            if not code:
+                raise Exception("Failed to obtain PIN code after multiple attempts")
+                
             auth_url = "https://plex.tv/link"
             logger.debug(f"PIN created: {code}, URL: {auth_url}")
             # Emit signal - it will be queued to main thread
