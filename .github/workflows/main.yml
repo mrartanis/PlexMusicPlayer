@@ -89,7 +89,8 @@ jobs:
       - name: Zip macOS app
         run: |
           cd PlexMusicPlayer_macos_${{ matrix.arch }}
-          zip -r ../PlexMusicPlayer_macos_${{ matrix.arch }}.zip "Plex Music Player.app"
+          # Use -y to store symlinks properly (critical for macOS apps)
+          zip -r -y ../PlexMusicPlayer_macos_${{ matrix.arch }}.zip "Plex Music Player.app"
           cd ..
       - name: Upload macOS ZIP
         uses: actions/upload-artifact@v4
