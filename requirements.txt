@@ -1,7 +1,6 @@
 PyQt6>=6.4.0
 plexapi>=4.15.0
 requests>=2.31.0
-setuptools<61.0.0
 numpy>=1.20.0
 scikit-learn>=1.0.0
 py2app; sys_platform == 'darwin'
@@ -12,8 +11,6 @@ pyinstaller; sys_platform == 'linux'
 pywin32; sys_platform == 'win32'
 importlib.resources; sys_platform == 'linux'
 importlib.resources; sys_platform == 'win32'
-jaraco.text; sys_platform == 'win32'
-jaraco.functools; sys_platform == 'win32'
-jaraco.collections; sys_platform == 'win32'
-jaraco.classes; sys_platform == 'win32'
+setuptools<61; sys_platform == "darwin"
+setuptools>=70; sys_platform != "darwin"
 python-vlc>=3.0.18122
