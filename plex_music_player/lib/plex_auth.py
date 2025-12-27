@@ -96,7 +96,7 @@ class PlexAuthWorker(QThread):
                     if code:
                         break
 
-                    logger.debug(f"Failed to get PIN (pin_login.pin is empty), attempt {attempt}/{max_retries})
+                    logger.debug(f"Failed to get PIN (pin_login.pin is empty), attempt {attempt}/{max_retries}")
                     self.msleep(sleep_ms)
                 except Exception as e:
                     logger.exception("Error in PIN request attempt {attempt}/{max_retries}: {e}")
