@@ -12,4 +12,8 @@ pyinstaller; sys_platform == 'linux'
 pywin32; sys_platform == 'win32'
 importlib.resources; sys_platform == 'linux'
 importlib.resources; sys_platform == 'win32'
+jaraco.text; sys_platform == 'win32'
+jaraco.functools; sys_platform == 'win32'
+jaraco.collections; sys_platform == 'win32'
+jaraco.classes; sys_platform == 'win32'
 python-vlc>=3.0.18122
