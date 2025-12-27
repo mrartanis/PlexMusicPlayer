@@ -46,7 +46,7 @@ class PlexAuthWorker(QThread):
 
     def _do_request_pin(self):
         try:
-            logger.debug("Requesting PIN with client identifier: %s", self.client_identifier)
+            logger.debug("Requesting PIN with client identifier: {}".format(self.client_identifier))
 
             headers = {
                 "X-Plex-Client-Identifier": str(self.client_identifier),
@@ -63,7 +63,7 @@ class PlexAuthWorker(QThread):
             session = requests.Session()
             session.verify = False
             if session.verify is False:
-                logger.warning("TLS verification is disabled (session.verify=False).")
+                logger.debug("TLS verification is disabled (session.verify=False).")
             session.headers.update(headers)
             max_retries = 3
             sleep_ms = 1000
@@ -76,12 +76,12 @@ class PlexAuthWorker(QThread):
                     ct = (r.headers.get("content-type") or "").lower()
                     head = (r.text or "")[:250].replace("\r", "\\r").replace("\n", "\\n")
                     logger.debug(
-                        "pins probe: status=%s ct=%r url=%s head=%r",
-                        r.status_code, ct, getattr(r, "url", ""), head
+                        f"pins probe: status={r.status_code} "
+                        f"ct={ct!r} url={r.url} head={head!r}"
                     )
                     return r
                 except Exception as e:
-                    logger.warning("pins probe failed: %s", e)
+                    logger.debug(f"pins probe failed: {e}")
                     return None
 
             last_probe = None
@@ -96,10 +96,10 @@ class PlexAuthWorker(QThread):
                     if code:
                         break
 
-                    logger.debug("Failed to get PIN (pin_login.pin is empty), attempt %s/%s", attempt, max_retries)
+                    logger.debug(f"Failed to get PIN (pin_login.pin is empty), attempt {attempt}/{max_retries})
                     self.msleep(sleep_ms)
                 except Exception as e:
-                    logger.exception("Error in PIN request attempt %s/%s: %s", attempt, max_retries, e)
+                    logger.exception("Error in PIN request attempt {attempt}/{max_retries}: {e}")
                     if attempt >= max_retries:
                         raise
 
@@ -112,13 +112,13 @@ class PlexAuthWorker(QThread):
                 raise Exception("Failed to obtain PIN code after multiple attempts (empty response).")
 
             auth_url = "https://plex.tv/link"
-            logger.debug("PIN created: %s, URL: %s", code, auth_url)
+            logger.debug("PIN created: {code}, URL: {auth_url}")
 
             self.pin_created.emit(code, auth_url)
             self._poll_pin()
 
         except Exception as e:
-            logger.exception("Error requesting PIN: %s", e)
+            logger.debug("Error requesting PIN: {e}")
             self.error.emit(str(e))
 
     def _poll_pin(self):
