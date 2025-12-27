@@ -44,44 +44,89 @@ class PlexAuthWorker(QThread):
         if self._action == 'request_pin':
             self._do_request_pin()
 
-    def _do_request_pin(self):
-        try:
-            logger.debug(f"Requesting PIN with client identifier: {self.client_identifier}")
-            headers = {'X-Plex-Client-Identifier': self.client_identifier}
-            
-            session = requests.Session()
-            session.verify = False
-            
-            # Retry mechanism for getting PIN
-            max_retries = 3
-            code = None
-            auth_url = None
-            
-            for attempt in range(max_retries):
-                try:
-                    self.pin_login = MyPlexPinLogin(session=session, headers=headers, oauth=False)
-                    code = self.pin_login.pin
-                    if code:
-                        break
-                    logger.debug(f"Failed to get PIN, attempt {attempt + 1}/{max_retries}")
-                    self.msleep(1000)
-                except Exception as e:
-                    logger.error(f"Error in PIN request attempt {attempt + 1}: {e}")
-                    if attempt == max_retries - 1:
-                        raise
-            
-            if not code:
-                raise Exception("Failed to obtain PIN code after multiple attempts")
-                
-            auth_url = "https://plex.tv/link"
-            logger.debug(f"PIN created: {code}, URL: {auth_url}")
-            # Emit signal - it will be queued to main thread
-            self.pin_created.emit(code, auth_url)
-            # Start polling (this will block this thread, but that's OK)
-            self._poll_pin()
-        except Exception as e:
-            logger.error(f"Error requesting PIN: {e}")
-            self.error.emit(str(e))
+def _do_request_pin(self):
+    try:
+        logger.debug("Requesting PIN with client identifier: %s", self.client_identifier)
+
+        headers = {
+            "X-Plex-Client-Identifier": str(self.client_identifier),
+            "X-Plex-Product": "PlexMusicPlayer",
+            "X-Plex-Version": getattr(self, "app_version", "dev"),
+            "X-Plex-Platform": "Linux",
+            "X-Plex-Platform-Version": "",
+            "X-Plex-Device": "Desktop",
+            "X-Plex-Device-Name": "PlexMusicPlayer",
+            "X-Plex-Model": "PlexMusicPlayer",
+            "Accept": "application/xml",
+        }
+
+        session = requests.Session()
+        session.verify = False
+        if session.verify is False:
+            logger.warning("TLS verification is disabled (session.verify=False).")
+
+        session.headers.update(headers)
+
+        max_retries = 3
+        sleep_ms = 1000
+
+        code = None
+        auth_url = None
+
+        def _log_pins_probe():
+            try:
+                r = session.post("https://plex.tv/api/v2/pins", timeout=15)
+                ct = (r.headers.get("content-type") or "").lower()
+                head = (r.text or "")[:250].replace("\r", "\\r").replace("\n", "\\n")
+                logger.debug(
+                    "pins probe: status=%s ct=%r url=%s head=%r",
+                    r.status_code, ct, getattr(r, "url", ""), head
+                )
+                return r
+            except Exception as e:
+                logger.warning("pins probe failed: %s", e)
+                return None
+
+        last_probe = None
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                if attempt in (1, max_retries):
+                    last_probe = _log_pins_probe()
+
+                self.pin_login = MyPlexPinLogin(session=session, headers=headers, oauth=False)
+
+                code = self.pin_login.pin
+                if code:
+                    break
+
+                logger.debug("Failed to get PIN (pin_login.pin is empty), attempt %s/%s", attempt, max_retries)
+                self.msleep(sleep_ms)
+
+            except Exception as e:
+                # Логируем стек — чтобы не было “фигни по сути”.
+                logger.exception("Error in PIN request attempt %s/%s: %s", attempt, max_retries, e)
+                if attempt >= max_retries:
+                    raise
+
+        if not code:
+            # Если probe был и там HTTP не 2xx — сообщим это в ошибке, это очень помогает.
+            if last_probe is not None and not getattr(last_probe, "ok", True):
+                raise Exception(
+                    f"Failed to obtain PIN. Plex returned HTTP {last_probe.status_code} "
+                    f"({(last_probe.headers.get('content-type') or '').strip()})."
+                )
+            raise Exception("Failed to obtain PIN code after multiple attempts (empty response).")
+
+        auth_url = "https://plex.tv/link"
+        logger.debug("PIN created: %s, URL: %s", code, auth_url)
+
+        self.pin_created.emit(code, auth_url)
+        self._poll_pin()
+
+    except Exception as e:
+        logger.exception("Error requesting PIN: %s", e)
+        self.error.emit(str(e))
 
     def _poll_pin(self):
         while not self.should_stop:
