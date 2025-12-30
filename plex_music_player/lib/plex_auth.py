@@ -114,14 +114,25 @@ class PlexAuthWorker(QThread):
             auth_url = "https://plex.tv/link"
             logger.debug("PIN created: {code}, URL: {auth_url}")
 
+            if not self.pin_login:
+                raise Exception("pin_login is None after PIN creation")
+
             self.pin_created.emit(code, auth_url)
+            logger.debug("Starting PIN polling...")
             self._poll_pin()
+            logger.debug("PIN polling finished")
 
         except Exception as e:
             logger.debug("Error requesting PIN: {e}")
             self.error.emit(str(e))
 
     def _poll_pin(self):
+        logger.debug("_poll_pin() called, starting polling loop")
+        if not self.pin_login:
+            logger.error("pin_login is None, cannot poll!")
+            return
+        
+        logger.debug("Entering polling loop...")
         while not self.should_stop:
             try:
                 logger.debug("Polling PIN...")
@@ -129,10 +140,7 @@ class PlexAuthWorker(QThread):
                     logger.debug("PIN authorized!")
                     token = self.pin_login.token
                     logger.debug("Got token, emitting signal immediately...")
-                    # Don't create MyPlexAccount here - it does network requests which are slow
-                    # Just emit the token, we'll create account later when needed
                     self._token = token
-                    # Emit only token, username will be fetched later if needed
                     self.authorized.emit(token, "")
                     logger.debug("Signal emitted")
                     return
@@ -140,14 +148,18 @@ class PlexAuthWorker(QThread):
                     logger.debug("PIN polling finished without success (expired?)")
                     return
                 
-                # Sleep in thread is fine
+                logger.debug("PIN not yet authorized, sleeping 2 seconds...")
                 self.msleep(2000)
             except Exception as e:
                 logger.error(f"Error polling PIN: {e}")
-                # Usually we continue polling unless it's a fatal error
+                logger.exception("Full exception traceback:")
                 if self.should_stop:
+                    logger.debug("should_stop is True, exiting polling loop")
                     return
+                logger.debug("Continuing polling after error, sleeping 2 seconds...")
                 self.msleep(2000)
+        
+        logger.debug("Polling loop exited (should_stop=True)")
 
     def _do_get_resources(self):
         try:
