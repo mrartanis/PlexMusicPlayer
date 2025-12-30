@@ -17,6 +17,7 @@ CAUTON! AI-generated
 
 Should work on OSX, windows and linux.
 Tested on osx 15 and 12 with arm processor, windows 11, ubuntu 24.04 x86_64, ubuntu 24.04 arm
+Windows version wants to vlc media player be installed on target system, libvlc not bundled in windows app
 
 ## Features
 
