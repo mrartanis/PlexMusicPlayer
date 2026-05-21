@@ -6,6 +6,7 @@ import ssl
 import threading
 import urllib.error
 import urllib.request
+from concurrent.futures import Future, ProcessPoolExecutor
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from socketserver import ThreadingMixIn
@@ -17,7 +18,6 @@ import miniaudio
 from app.domain import LibraryCacheRepo, Logger, Track, WaveformState
 
 _WAVEFORM_BIN_COUNT = 100
-_ANALYSIS_MIN_DELTA_BYTES = 512 * 1024
 _PROXY_CHUNK_SIZE = 64 * 1024
 
 
@@ -45,7 +45,6 @@ class _ProxySession:
     waveform_known_position_ms: int = 0
     waveform_mode: str = "plain"
     analysis_in_flight: bool = False
-    last_analysis_size_bytes: int = 0
     closed: bool = False
 
     def local_url(self, *, port: int) -> str:
@@ -72,6 +71,7 @@ class StreamProxyService:
         self._server: _ThreadingHTTPServer | None = None
         self._server_thread: threading.Thread | None = None
         self._ssl_context = self._build_ssl_context()
+        self._waveform_executor = ProcessPoolExecutor(max_workers=1)
 
     @property
     def port(self) -> int:
@@ -137,6 +137,7 @@ class StreamProxyService:
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()
+        self._waveform_executor.shutdown(wait=False, cancel_futures=True)
 
     def _ensure_server_started(self) -> bool:
         if self._server is not None:
@@ -277,57 +278,56 @@ class StreamProxyService:
             _append_contiguous_data(session, start_offset, chunk)
             session.contiguous_bytes = _contiguous_prefix_length(session.byte_ranges)
             if session.waveform_mode == "plain" and _looks_like_decodable_audio(session):
-                session.waveform_mode = "mp3_partial"
-            self._maybe_schedule_analysis(session)
+                session.waveform_mode = "loading"
+            self._maybe_schedule_full_analysis(session)
 
-    def _maybe_schedule_analysis(self, session: _ProxySession) -> None:
-        if session.waveform_mode != "mp3_partial":
+    def _maybe_schedule_full_analysis(self, session: _ProxySession) -> None:
+        if session.waveform_mode not in {"loading", "plain"}:
             return
         if session.track_duration_ms is None or session.track_duration_ms <= 0:
             return
         if session.analysis_in_flight:
             return
-        contiguous_size = len(session.contiguous_data)
-        if contiguous_size <= session.last_analysis_size_bytes:
+        if not _looks_like_decodable_audio(session):
             return
-        if (
-            contiguous_size - session.last_analysis_size_bytes < _ANALYSIS_MIN_DELTA_BYTES
-            and session.total_size_bytes != contiguous_size
-        ):
+        contiguous_size = len(session.contiguous_data)
+        if session.total_size_bytes is None or contiguous_size < session.total_size_bytes:
             return
 
         session.analysis_in_flight = True
-        data_snapshot = bytes(session.contiguous_data)
-        is_complete = (
-            session.total_size_bytes is not None
-            and contiguous_size >= session.total_size_bytes
-        )
+        session.waveform_mode = "loading"
         self._logger.debug(
             (
                 "Waveform analysis scheduled track=%s contiguous=%s total=%s "
-                "duration_ms=%s complete=%s last_analysis=%s"
+                "duration_ms=%s"
             ),
             session.track_id,
             contiguous_size,
             session.total_size_bytes,
             session.track_duration_ms,
-            is_complete,
-            session.last_analysis_size_bytes,
         )
-        thread = threading.Thread(
-            target=self._analyze_waveform,
-            args=(session.session_id, contiguous_size, data_snapshot, is_complete),
-            daemon=True,
-            name=f"yaymp-waveform-{session.track_id}",
+        future = self._waveform_executor.submit(
+            _decode_complete_audio_bins,
+            bytes(session.contiguous_data),
+            session.track_duration_ms,
+            _WAVEFORM_BIN_COUNT,
         )
-        thread.start()
+        future.add_done_callback(
+            lambda completed, session_id=session.session_id, size=contiguous_size: (
+                self._apply_waveform_analysis_result(
+                    session_id=session_id,
+                    contiguous_size=size,
+                    future=completed,
+                )
+            )
+        )
 
-    def _analyze_waveform(
+    def _apply_waveform_analysis_result(
         self,
+        *,
         session_id: str,
         contiguous_size: int,
-        data_snapshot: bytes,
-        is_complete: bool,
+        future: Future[tuple[tuple[float, ...], int]],
     ) -> None:
         with self._lock:
             session = self._sessions_by_id.get(session_id)
@@ -338,21 +338,13 @@ class StreamProxyService:
                 if session.closed:
                     return
                 duration_ms = session.track_duration_ms or 0
-            bins, known_position_ms = _decode_audio_bins(
-                data_snapshot,
-                duration_ms=duration_ms,
-                bin_count=_WAVEFORM_BIN_COUNT,
-                is_complete=is_complete,
-            )
+            bins, known_position_ms = future.result()
             with session.lock:
                 if not session.closed:
                     session.waveform_bins = bins
                     session.waveform_known_position_ms = known_position_ms
-                    session.last_analysis_size_bytes = max(
-                        session.last_analysis_size_bytes,
-                        contiguous_size,
-                    )
-                    if is_complete and self._library_cache_repo is not None:
+                    session.waveform_mode = "ready"
+                    if self._library_cache_repo is not None:
                         self._library_cache_repo.save_track_metadata(
                             Track(
                                 id=session.track.id,
@@ -376,7 +368,7 @@ class StreamProxyService:
                     self._logger.debug(
                         (
                             "Waveform analysis complete track=%s contiguous=%s total=%s "
-                            "known_ms=%s duration_ms=%s bins=%s complete=%s"
+                            "known_ms=%s duration_ms=%s bins=%s"
                         ),
                         session.track_id,
                         contiguous_size,
@@ -384,48 +376,24 @@ class StreamProxyService:
                         known_position_ms,
                         duration_ms,
                         len(bins),
-                        is_complete,
                     )
         except Exception as exc:  # noqa: BLE001
             with session.lock:
-                session.last_analysis_size_bytes = max(
-                    session.last_analysis_size_bytes,
-                    contiguous_size,
-                )
-                if is_complete:
-                    session.waveform_mode = "decode_failed"
+                session.waveform_mode = "decode_failed"
             self._logger.debug(
                 (
                     "Waveform analysis deferred track=%s contiguous=%s total=%s "
-                    "duration_ms=%s complete=%s error=%s"
+                    "duration_ms=%s error=%s"
                 ),
                 session.track_id,
                 contiguous_size,
                 session.total_size_bytes if session is not None else None,
                 duration_ms if "duration_ms" in locals() else None,
-                is_complete,
                 exc,
             )
         finally:
             with session.lock:
                 session.analysis_in_flight = False
-                should_catch_up = (
-                    not session.closed
-                    and session.waveform_mode == "mp3_partial"
-                    and len(session.contiguous_data) > session.last_analysis_size_bytes
-                )
-                if should_catch_up:
-                    self._logger.debug(
-                        (
-                            "Waveform analysis catch-up track=%s contiguous=%s "
-                            "last_analysis=%s total=%s"
-                        ),
-                        session.track_id,
-                        len(session.contiguous_data),
-                        session.last_analysis_size_bytes,
-                        session.total_size_bytes,
-                    )
-                    self._maybe_schedule_analysis(session)
 
     def _close_session(self, session: _ProxySession) -> None:
         with session.lock:
@@ -570,12 +538,10 @@ def _drain_pending_chunks(session: _ProxySession) -> None:
             break
 
 
-def _decode_audio_bins(
+def _decode_complete_audio_bins(
     data: bytes,
-    *,
     duration_ms: int,
     bin_count: int,
-    is_complete: bool,
 ) -> tuple[tuple[float, ...], int]:
     decoded = miniaudio.decode(
         data,
@@ -590,17 +556,11 @@ def _decode_audio_bins(
         raise ValueError("decoded audio has no frames")
 
     decoded_duration_ms = int(frames * 1000 / decoded.sample_rate)
-    known_position_ms = duration_ms if is_complete else min(duration_ms, decoded_duration_ms)
+    known_position_ms = duration_ms or decoded_duration_ms
     if known_position_ms <= 0:
         raise ValueError("decoded audio has no known duration")
 
-    if is_complete:
-        known_bin_count = bin_count
-    else:
-        known_bin_count = max(
-            1,
-            min(bin_count, round(bin_count * known_position_ms / duration_ms)),
-        )
+    known_bin_count = bin_count
     frames_per_bin = max(1, frames // known_bin_count)
     bins = [0.0] * bin_count
     max_possible = float(32767)

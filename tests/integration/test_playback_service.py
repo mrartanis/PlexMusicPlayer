@@ -23,6 +23,7 @@ from app.domain import (
     StreamResolveError,
     Track,
     WaveformState,
+    PlaybackState as EnginePlaybackState,
 )
 from app.infrastructure.playback.fake_playback_engine import FakePlaybackEngine
 
@@ -605,7 +606,7 @@ class FakeStreamProxyService:
             buffered_position_ms=42_000,
             waveform_bins=(0.2, 0.6, 0.4),
             waveform_known_position_ms=57_000,
-            waveform_mode="mp3_partial",
+            waveform_mode="ready",
         )
 
     def create_session(self, *, track: Track, stream_ref: str) -> str:
@@ -1534,3 +1535,59 @@ def test_snapshot_includes_stream_proxy_waveform_state() -> None:
 
     assert proxy.created_sessions == [("http-one", "https://example.test/http-one.mp3")]
     assert snapshot.state.waveform == proxy.waveform_state
+
+
+def test_cached_waveform_uses_engine_duration_for_full_render() -> None:
+    engine = FakePlaybackEngine()
+    track = Track(
+        id="one",
+        title="One",
+        artists=("Artist",),
+        duration_ms=57_000,
+        waveform_bins=(0.2, 0.6, 0.4),
+    )
+    service = PlaybackService(
+        playback_engine=engine,
+        logger=TestLogger(),
+        music_service=FakeMusicService(track=track, stream_ref="resolved://one"),
+        stream_proxy_service=FakeStreamProxyService(),
+        waveform_progress_enabled=True,
+    )
+
+    service.replace_queue((track,), start_index=0, source_type="track", source_id="one")
+    engine._state = EnginePlaybackState(  # noqa: SLF001
+        status=PlaybackStatus.PLAYING,
+        position_ms=0,
+        duration_ms=60_000,
+        volume=engine.get_state().volume,
+        audio_codec="fake",
+        audio_bitrate=None,
+    )
+
+    snapshot = service.refresh()
+
+    assert snapshot.state.waveform.waveform_bins == track.waveform_bins
+    assert snapshot.state.waveform.waveform_known_position_ms == 60_000
+    assert snapshot.state.waveform.waveform_mode in {"cached", "ready"}
+
+
+def test_cached_waveform_uses_track_duration_when_engine_duration_is_missing() -> None:
+    track = Track(
+        id="one",
+        title="One",
+        artists=("Artist",),
+        duration_ms=57_000,
+        waveform_bins=(0.2, 0.6, 0.4),
+    )
+    service = PlaybackService(
+        playback_engine=FakePlaybackEngine(),
+        logger=TestLogger(),
+        music_service=FakeMusicService(track=track, stream_ref="resolved://one"),
+        stream_proxy_service=FakeStreamProxyService(),
+        waveform_progress_enabled=True,
+    )
+
+    snapshot = service.replace_queue((track,), start_index=0, source_type="track", source_id="one")
+
+    assert snapshot.state.duration_ms == 57_000
+    assert snapshot.state.waveform.waveform_known_position_ms >= 57_000

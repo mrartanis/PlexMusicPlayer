@@ -770,12 +770,26 @@ class PlaybackService:
             position_ms = self._restored_position_ms
         waveform = WaveformState()
         current_item = self.current_item()
+        effective_duration_ms = engine_state.duration_ms or (
+            current_item.track.duration_ms if current_item is not None else None
+        )
         if (
             self._waveform_progress_enabled
             and self._stream_proxy_service is not None
             and current_item is not None
         ):
             waveform = self._stream_proxy_service.get_waveform_state(current_item.track.id)
+            if waveform.waveform_bins and current_item.track.waveform_bins:
+                waveform = WaveformState(
+                    buffered_position_ms=waveform.buffered_position_ms,
+                    waveform_bins=waveform.waveform_bins,
+                    waveform_known_position_ms=max(
+                        waveform.waveform_known_position_ms,
+                        current_item.track.duration_ms or 0,
+                        effective_duration_ms or 0,
+                    ),
+                    waveform_mode=waveform.waveform_mode,
+                )
             if (
                 waveform.waveform_bins
                 and current_item.track.duration_ms
@@ -793,17 +807,21 @@ class PlaybackService:
             and current_item.track.waveform_bins
             and (not waveform.waveform_bins or waveform.waveform_mode == "plain")
         ):
+            known_duration_ms = max(
+                current_item.track.duration_ms or 0,
+                effective_duration_ms or 0,
+            )
             waveform = WaveformState(
                 buffered_position_ms=waveform.buffered_position_ms,
                 waveform_bins=current_item.track.waveform_bins,
-                waveform_known_position_ms=current_item.track.duration_ms or 0,
+                waveform_known_position_ms=known_duration_ms,
                 waveform_mode="cached",
             )
         return PlaybackState(
             status=engine_state.status,
             active_index=self._active_index,
             position_ms=position_ms,
-            duration_ms=engine_state.duration_ms,
+            duration_ms=effective_duration_ms,
             volume=self._volume,
             shuffle_enabled=self._shuffle_enabled,
             repeat_mode=self._repeat_mode,

@@ -8,6 +8,8 @@ from PySide6.QtWidgets import QSizePolicy, QWidget
 
 
 class WaveformSeekBar(QWidget):
+    _PLACEHOLDER_BINS = tuple(0.2 for _ in range(100))
+
     sliderReleased = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -155,12 +157,7 @@ class WaveformSeekBar(QWidget):
                 painter.setBrush(buffered_color)
                 painter.drawRoundedRect(buffered_rect, groove_radius, groove_radius)
 
-        if (
-            self._waveform_mode != "plain"
-            and self._waveform_bins
-            and self._waveform_known_position_ms > 0
-            and self._maximum > 0
-        ):
+        if self._should_paint_waveform():
             self._ensure_waveform_cache(
                 groove_rect=groove_rect,
                 played_color=played_color,
@@ -186,6 +183,13 @@ class WaveformSeekBar(QWidget):
         painter.setPen(QPen(handle_border, 1.6))
         painter.setBrush(handle_fill)
         painter.drawEllipse(handle_center, 7, 7)
+
+    def _should_paint_waveform(self) -> bool:
+        if self._maximum <= 0 or not self._waveform_enabled:
+            return False
+        if self._waveform_bins and self._waveform_known_position_ms > 0:
+            return True
+        return self._waveform_mode == "loading"
 
     def _paint_waveform(
         self,
@@ -238,7 +242,7 @@ class WaveformSeekBar(QWidget):
             self._waveform_mode,
             self._waveform_known_position_ms,
             self._accent.name(),
-            id(self._waveform_bins),
+            id(self._waveform_bins) if self._waveform_bins else "placeholder",
         )
         if cache_key == self._waveform_cache_key:
             return
@@ -262,9 +266,18 @@ class WaveformSeekBar(QWidget):
         pixmap.fill(Qt.GlobalColor.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-        bins = self._waveform_bins
-        known_ratio = max(0.0, min(1.0, self._waveform_known_position_ms / self._maximum))
-        known_bins = max(1, min(len(bins), round(len(bins) * known_ratio)))
+        is_placeholder = not self._waveform_bins
+        bins = self._waveform_bins or self._PLACEHOLDER_BINS
+        known_ratio = (
+            1.0
+            if is_placeholder
+            else max(0.0, min(1.0, self._waveform_known_position_ms / self._maximum))
+        )
+        known_bins = (
+            len(bins)
+            if is_placeholder
+            else max(1, min(len(bins), round(len(bins) * known_ratio)))
+        )
         known_width = groove_rect.width() * known_ratio
         waveform_base_height = 9.0
         half_height = max(5.0, waveform_base_height * 2.15)
@@ -288,7 +301,7 @@ class WaveformSeekBar(QWidget):
                 QPointF(x, groove_rect.center().y() - height / 2),
                 QPointF(x, groove_rect.center().y() + height / 2),
             )
-        if known_bins < len(bins):
+        if not is_placeholder and known_bins < len(bins):
             tail_rect = QRectF(
                 groove_rect.left() + known_width,
                 groove_rect.top(),
