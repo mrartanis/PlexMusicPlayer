@@ -85,7 +85,7 @@ chmod u+rw "${APP_LIB_DIR}/${MPV_LIBRARY_NAME}"
     --root-library "${APP_LIB_DIR}/${MPV_LIBRARY_NAME}" \
     --target-dir "${APP_LIB_DIR}"
 
-cat >"${APPDIR}/AppRun" <<'EOF'
+cat >"${APPDIR}/AppRun" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
 APPDIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
