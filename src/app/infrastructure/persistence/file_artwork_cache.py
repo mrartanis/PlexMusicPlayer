@@ -20,8 +20,10 @@ class FileArtworkCache:
             return value.replace("%%", _ARTWORK_SIZE)
         if value.startswith("//"):
             return f"https:{value}".replace("%%", _ARTWORK_SIZE)
-        if "/" in value:
+        if value.startswith("/"):
             return value.replace("%%", _ARTWORK_SIZE)
+        if "/" in value:
+            return f"https://{value}".replace("%%", _ARTWORK_SIZE)
         return f"https://{value}".replace("%%", _ARTWORK_SIZE)
 
     def cache_path_for_url(self, artwork_url: str) -> Path:

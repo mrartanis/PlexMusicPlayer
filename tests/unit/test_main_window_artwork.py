@@ -18,7 +18,7 @@ class _ArtworkHarness(MainWindowArtworkMixin, QWidget):
             services=SimpleNamespace(artwork_cache=FileArtworkCache(cache_dir=cache_dir)),
             logger=logging.getLogger("test-artwork"),
         )
-        self._accent_color = "#526ee8"
+        self._accent_color = "#DAA435"
         self._artwork_label = QLabel()
         self._pending_artwork_track_id = None
 
@@ -45,7 +45,7 @@ def test_artwork_prefers_pixel_accent_over_api_color(qtbot, tmp_path) -> None:
     window._set_artwork_pixmap(image_path, preferred_accent="#22aaee")
 
     assert window._accent_color != "#22aaee"
-    assert window._accent_color != "#526ee8"
+    assert window._accent_color != "#DAA435"
     cached = window._container.services.artwork_cache.load_accent_color(image_path)
     assert cached == window._accent_color
 
@@ -70,8 +70,8 @@ def test_artwork_falls_back_to_default_when_pixels_and_api_are_unusable(qtbot, t
 
     window._set_artwork_pixmap(image_path, preferred_accent="#111111")
 
-    assert window._accent_color == "#526ee8"
-    assert window._container.services.artwork_cache.load_accent_color(image_path) == "#526ee8"
+    assert window._accent_color == "#DAA435"
+    assert window._container.services.artwork_cache.load_accent_color(image_path) == "#DAA435"
 
 
 def test_artwork_cache_has_priority_over_pixels_and_api(qtbot, tmp_path) -> None:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.infrastructure.persistence.file_artwork_cache import FileArtworkCache
 
 
-def test_file_artwork_cache_normalizes_yandex_cover_refs(tmp_path) -> None:
+def test_file_artwork_cache_normalizes_scheme_less_refs(tmp_path) -> None:
     cache = FileArtworkCache(cache_dir=tmp_path)
 
     assert cache.normalize_url("avatars.yandex.net/get-music-content/%%") == (
@@ -11,6 +11,9 @@ def test_file_artwork_cache_normalizes_yandex_cover_refs(tmp_path) -> None:
     )
     assert cache.normalize_url("//avatars.yandex.net/get-music-content/%%") == (
         "https://avatars.yandex.net/get-music-content/600x600"
+    )
+    assert cache.normalize_url("/library/metadata/123/thumb/%%") == (
+        "/library/metadata/123/thumb/600x600"
     )
     assert cache.normalize_url("https://example.test/%%") == "https://example.test/600x600"
     assert cache.normalize_url(" ") is None
