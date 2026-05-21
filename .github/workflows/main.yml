@@ -26,8 +26,9 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e '.[dev]'
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e '.[dev]'
       - name: Run tests
         run: ./scripts/run_tests.sh
       - name: Run lint
@@ -50,8 +51,9 @@ jobs:
           sudo apt-get install -y libmpv2
       - name: Install packaging dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e '.[packaging]'
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e '.[packaging]'
       - name: Build Linux artifact
         run: ./scripts/build_nuitka_linux.sh
       - name: Archive Linux artifact
@@ -79,8 +81,9 @@ jobs:
         run: brew install mpv
       - name: Install packaging dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e '.[packaging]'
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install -e '.[packaging]'
       - name: Build macOS artifact
         run: ./scripts/build_nuitka_macos.sh
       - name: Archive macOS artifact
