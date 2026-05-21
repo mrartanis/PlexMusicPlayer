@@ -6,8 +6,8 @@ import ssl
 import threading
 import urllib.error
 import urllib.request
-from concurrent.futures import Future, ProcessPoolExecutor
 from collections.abc import Sequence
+from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass, field
 from socketserver import ThreadingMixIn
 from uuid import uuid4
