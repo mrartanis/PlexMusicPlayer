@@ -1,203 +1,47 @@
-name: Build PlexMusicPlayer
+name: CI
 
 on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version number (e.g. 1.0.0)'
-        required: true
-        type: string
+  push:
+    branches: ["master", "main"]
+  pull_request:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PLEX_MUSIC_PLAYER_PLAYBACK_BACKEND: fake
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+      - name: Run tests
+        run: ./scripts/run_tests.sh
+      - name: Run lint
+        run: ./scripts/run_lint.sh
+
   build-linux:
     runs-on: ubuntu-latest
+    needs: test
+    env:
+      QT_QPA_PLATFORM: offscreen
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      - name: Install Python dependencies
+          python-version: "3.12"
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmpv2
+      - name: Install packaging dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pyinstaller
-      - name: Install VLC
-        run: sudo apt-get update && sudo apt-get install -y vlc
-      - name: Build Linux binary
-        run: |
-          pyinstaller -F --add-data "MusicApp.iconset/icon_256x256.png:icon" --add-data "plex_music_player/icons_svg/*.svg:plex_music_player/icons_svg" plex_music_player/__main__.py
-          mv dist/__main__ PlexMusicPlayer_linux_x86_64
-          zip PlexMusicPlayer_linux_x86_64.zip PlexMusicPlayer_linux_x86_64
-      - name: Upload Linux binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: PlexMusicPlayer_linux_x86_64
-          path: PlexMusicPlayer_linux_x86_64.zip
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install -U setuptools
-      - name: Install VLC
-        run: choco install vlc -y
-      - name: Build Windows binary
-        run: |
-            pyinstaller -i icon_win.ico -F --add-data="MusicApp.iconset\icon_256x256.png;icon" --add-data="plex_music_player\icons_svg\*.svg;plex_music_player\icons_svg" --windowed .\plex_music_player\__main__.py
-            Move-Item -Path dist\__main__.exe -Destination PlexMusicPlayer_windows_x86-64.exe
-            Compress-Archive -Path PlexMusicPlayer_windows_x86-64.exe -DestinationPath PlexMusicPlayer_windows_x86-64.zip
-      - name: Upload Windows binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: PlexMusicPlayer_windows_x86-64
-          path: PlexMusicPlayer_windows_x86-64.zip
-
-  build-macos:
-    strategy:
-      matrix:
-        arch: [x86_64, arm64]
-        include:
-          - arch: x86_64
-            runs-on: macos-15
-          - arch: arm64
-            runs-on: macos-15
-    runs-on: ${{ matrix.runs-on }}
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Install VLC
-        run: brew install --cask vlc
-      - name: Build macOS app
-        run: |
-          python setup.py py2app
-          mv dist PlexMusicPlayer_macos_${{ matrix.arch }}
-      - name: Zip macOS app
-        run: |
-          cd PlexMusicPlayer_macos_${{ matrix.arch }}
-          # Use -y to store symlinks properly (critical for macOS apps)
-          zip -r -y ../PlexMusicPlayer_macos_${{ matrix.arch }}.zip "Plex Music Player.app"
-          cd ..
-      - name: Upload macOS ZIP
-        uses: actions/upload-artifact@v4
-        with:
-          name: PlexMusicPlayer_macos_${{ matrix.arch }}
-          path: PlexMusicPlayer_macos_${{ matrix.arch }}.zip
-
-  create-release:
-    needs:
-      - build-linux
-      - build-windows
-      - build-macos
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download Linux artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: PlexMusicPlayer_linux_x86_64
-          path: artifacts
-      - name: Download Windows artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: PlexMusicPlayer_windows_x86-64
-          path: artifacts
-      - name: Download macOS x86_64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: PlexMusicPlayer_macos_x86_64
-          path: artifacts
-      - name: Download macOS arm64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: PlexMusicPlayer_macos_arm64
-          path: artifacts
-      - name: Prepare artifacts for release
-        run: |
-          echo "=== Artifacts structure ==="
-          find artifacts -type f -name "*.zip" || true
-          find artifacts -type f || true
-          ls -laR artifacts/ || true
-          echo "=== Creating release directory ==="
-          mkdir -p artifacts_release
-          # actions/download-artifact creates subdirectories, find and copy all zip files
-          find artifacts -name "*.zip" -type f -exec cp {} artifacts_release/ \;
-          echo "=== Release artifacts ==="
-          ls -la artifacts_release/
-          if [ ! -f artifacts_release/PlexMusicPlayer_linux_x86_64.zip ]; then
-            echo "ERROR: Linux artifact not found!"
-            exit 1
-          fi
-          if [ ! -f artifacts_release/PlexMusicPlayer_windows_x86-64.zip ]; then
-            echo "ERROR: Windows artifact not found!"
-            exit 1
-          fi
-          if [ ! -f artifacts_release/PlexMusicPlayer_macos_x86_64.zip ]; then
-            echo "ERROR: macOS x86_64 artifact not found!"
-            exit 1
-          fi
-          if [ ! -f artifacts_release/PlexMusicPlayer_macos_arm64.zip ]; then
-            echo "ERROR: macOS arm64 artifact not found!"
-            exit 1
-          fi
-      - name: Generate Changelog
-        id: changelog
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { data: releases } = await github.rest.repos.listReleases({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              per_page: 1
-            });
-            const previousTag = releases.length
-              ? releases[0].tag_name
-              : 'initial';
-            const { data: commits } = await github.rest.repos.compareCommits({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              base: previousTag,
-              head: context.sha
-            });
-            return commits.commits
-              .map(c => `- ${c.commit.message.split('\n')[0]} (by ${c.commit.author.name})`)
-              .join('\n');
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ github.event.inputs.version }}
-          name: Release v${{ github.event.inputs.version }}
-          body: |
-            PlexMusicPlayer v${{ github.event.inputs.version }}
-
-            ## Changes
-            ${{ steps.changelog.outputs.result }}
-
-            ## Downloads
-            - Linux (x86_64)
-            - Windows (x86-64)
-            - macOS (x86_64, arm64)
-          files: |
-            artifacts_release/PlexMusicPlayer_linux_x86_64.zip
-            artifacts_release/PlexMusicPlayer_windows_x86-64.zip
-            artifacts_release/PlexMusicPlayer_macos_x86_64.zip
-            artifacts_release/PlexMusicPlayer_macos_arm64.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          python -m pip install -e '.[packaging]'
+      - name: Build Linux artifact
+        run: ./scripts/build_nuitka_linux.sh

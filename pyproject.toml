@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "plex-music-player"
+version = "0.3.0"
+description = "Desktop Plex music player."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "certifi>=2025.0.0,<2027.0.0",
+    "platformdirs>=4.3,<5.0",
+    "miniaudio>=1.71,<2.0",
+    "python-mpv>=1.0.8,<2.0",
+    "PySide6>=6.8,<7.0",
+    "pyobjc-core>=10.3; sys_platform == 'darwin'",
+    "pyobjc-framework-Cocoa>=10.3; sys_platform == 'darwin'",
+    "pyobjc-framework-MediaPlayer>=10.3; sys_platform == 'darwin'",
+    "plexapi>=4.15,<5.0",
+    "requests>=2.32,<3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9.0",
+    "pytest-qt>=4.4,<5.0",
+    "ruff>=0.11,<0.12",
+]
+packaging = [
+    "imageio>=2.37,<3.0",
+    "nuitka>=4.1,<5.0",
+    "zstandard>=0.23,<1.0",
+]
+
+[project.scripts]
+plex-music-player = "app.__main__:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B"]

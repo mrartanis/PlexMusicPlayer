@@ -1,172 +1,84 @@
 # Plex Music Player
 
-A modern music player for Plex Media Server.
+Desktop Plex music player built as a Plex-focused fork of `YaYmp`.
 
-<p align="center">
-  <img src="screenshot1.png" alt="Compact Mode 1" width="45%" style="display:inline-block; margin-right:2%; vertical-align:top;"/>
-  <img src="screenshot2.png" alt="Compact Mode 2" width="45%" style="display:inline-block; vertical-align:top;"/>
-</p>
-<p align="center"><b>Compact mode (two examples)</b></p>
+## What It Does
 
-<p align="center">
-  <img src="screenshot_wide.png" alt="Wide Mode" width="90%"/>
-</p>
-<p align="center"><b>Wide mode</b></p>
+- Plex PIN login with server and music library selection
+- Search across tracks, artists, albums, and playlists
+- `Liked Tracks` backed by Plex `userRating=10`
+- `Artists`, `Albums`, and `Playlists` browsing with incremental loading
+- `Random Mix` that starts fast and keeps a short random tail in the queue
+- Persistent queue, artwork cache, waveform preview, shuffle/repeat, and system media controls
+- macOS and Linux desktop builds via `Nuitka`
 
-CAUTON! AI-generated
+## Screenshots
 
-Should work on OSX, windows and linux.
-Tested on osx 15 and 12 with arm processor, windows 11, ubuntu 24.04 x86_64, ubuntu 24.04 arm
-Windows version wants to vlc media player be installed on target system, libvlc not bundled in windows app
+![Library dark theme](library_dark.png)
+![Compact dark player](small_dark.png)
+![Compact light player](small_light.png)
+![Ultrawide dark layout](ultrawide_dark.png)
+![Wide light layout](wide_light.png)
 
-## Features
+## Plex-Specific Behavior
 
-- 🎵 QT6 dark theme ui.
-- 🎨 Album artwork display
-- 📱 macOS Media Center integration
-  - Now Playing information
-  - Media controls (play/pause, next/previous track)
-  - Album artwork in Media Center
-- ⊞ Windows media keys integration
-- 🎯 Automatic connection to Plex server at startup
-- 🔄 Playlist management
-  - Add/remove tracks
-  - Shuffle playlist
-  - Clear playlist
-- 🎚️ Playback controls
-  - Play/Pause
-  - Next/Previous track
-  - Progress bar with seeking
-  - Volume control
-- 📋 Track information display
-  - Title
-  - Artist
-  - Album
-  - Year
-  - Duration
-- 💾 Configuration persistence
-  - Server connection details
-  - Last played track
-  - Playlist state
-- 🖥️ Adaptive layout
-  - Compact mode for normal window size
-  - Wide mode with resizable playlist (activated when window width is 1.5x the initial width)
-  - Drag handle to adjust playlist width in wide mode
-  - Large album artwork display in wide mode
+- `Random Mix` is a fast-start endless random queue
+- `Like` writes Plex `userRating=10`
+- `Liked Tracks` shows tracks with that maximum user rating
+- Large library pages load incrementally instead of fetching everything upfront
+- `Play all` for large sources streams tracks into the queue page by page
 
-## Interface Modes
+## Repository Layout
 
-### Compact Mode
-Default view optimized for normal window sizes:
-- Album artwork and track info at the top
-- Playback controls in the middle
-- Playlist at the bottom
+- `src/app` contains the active application
+- `scripts` contains local run, test, lint, and build entrypoints
+- `tests` contains contract, integration, smoke, and unit coverage
+- `tools` contains packaging helpers and utility entrypoints
+- `assets` contains app icons used by runtime and packaged builds
+- `llm/PROJECT_RULES.md` contains durable implementation constraints for future work
 
-### Wide Mode
-Automatically activates when window width is 1.5x the initial width:
-- Resizable playlist on the left (drag handle to adjust width)
-- Large album artwork on the right
-- Track info and controls at the bottom right
-- Perfect for wide screens and multi-monitor setups
+## Development
 
-## Building from source
+Python `3.12+` is required.
 
-First, create and activate virtual environment (not needed for ARM64 build):
-```bash
-# Create virtual environment
-python -m venv env
-
-# Activate virtual environment
-# On Windows:
-.\env\Scripts\activate
-# On macOS/Linux:
-source env/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-### Windows
-```powershell
-# Ensure virtual environment is activated
-.\env\Scripts\activate
-
-# Run PowerShell script
-.\build_windows.ps1
-```
-This will create `PlexMusicPlayer_windows_x86-64.exe` using PyInstaller.
-
-### macOS
-```bash
-# Ensure virtual environment is activated
-source env/bin/activate
-
-# Run build script
-./build_app_osx.sh
-```
-This will create a macOS app bundle in `dist/` directory using py2app.
-
-### Linux (x86_64)
-```bash
-# Ensure virtual environment is activated
-source env/bin/activate
-
-# Run build script
-./build_linux.sh
-```
-This will create `PlexMusicPlayer_linux_x86_64` binary using PyInstaller.
-
-### Linux (ARM64)
-For ARM64 builds, we use Docker with BuildKit. First, prepare the build environment:
+Install dependencies:
 
 ```bash
-# Enable QEMU for ARM64 emulation
-docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-
-# Create and configure buildx builder
-docker buildx create --use --name multiarch-builder
-docker buildx inspect --bootstrap
+python3 -m venv .venv
+.venv/bin/python -m pip install -e '.[dev]'
 ```
 
-Then build the ARM64 binary:
+Run locally:
+
 ```bash
-# Build ARM64 binary
-docker buildx build --platform linux/arm64 --output type=local,dest=./output .
+./scripts/run_app.sh
 ```
-The binary will be created in `output/PlexMusicPlayer_linux_arm64`.
 
-You can optimize ARM64 build performance by setting QEMU parameters:
+Run checks:
+
 ```bash
-# Optional: Set QEMU parameters for better performance
-export QEMU_CPU=max
-export QEMU_SMP=8  # Adjust based on your CPU cores
+./scripts/run_tests.sh
+./scripts/run_lint.sh
 ```
 
-### Build Requirements
-- Windows: Python 3.12, PyQt6
-- macOS: Python 3.11, PyQt6
-- Linux x86_64: Python 3.12, PyQt6, build-essential
-- Linux ARM64: Docker with BuildKit enabled
+## Packaging
 
-All platforms require the dependencies listed in `requirements.txt`.
+Build Linux:
 
-## Media Center Integration
+```bash
+./scripts/build_nuitka_linux.sh
+```
 
-The player integrates with macOS Media Center and Windows Media Keys, providing:
-- Track information in the Now Playing widget (macOS)
-- Album artwork in the Media Center (macOS)
-- Media controls from:
-  - Media Center widget (macOS)
-  - Touch Bar (macOS)
-  - Media keys on keyboard (macOS and Windows)
-  - Control Center (macOS)
+Build macOS:
 
-## Known Issues
+```bash
+./scripts/build_nuitka_macos.sh
+```
 
-- **Timer Warning**: After pausing a track, you might see a "QObject::killTimer: Timers cannot be stopped from another thread" warning in the console. This is a known Qt issue and doesn't affect playback functionality.
-- **Media Keys**: On Windows, media keys might take a few seconds to start working after application launch.
+Artifacts are built as `PlexMusicPlayer` / `Plex Music Player.app`, with the Plex player icon bundled from `assets/`.
 
-## License
+## Current Notes
 
-feel free to use this project as you wish. 
-
+- The app uses `python-mpv` for playback and `plexapi` for library/auth access.
+- Browser pages default to smaller incremental loads to keep the UI responsive on large libraries.
+- Queue persistence is stored in SQLite tables, not a single serialized JSON blob.
