@@ -3,7 +3,7 @@ from __future__ import annotations
 from math import ceil
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen, QPixmap
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QSizePolicy, QWidget
 
 
@@ -28,9 +28,6 @@ class WaveformSeekBar(QWidget):
         self._waveform_known_position_ms = 0
         self._waveform_mode = "plain"
         self._waveform_enabled = False
-        self._waveform_cache_key: tuple[object, ...] | None = None
-        self._waveform_pending_cache: QPixmap | None = None
-        self._waveform_played_cache: QPixmap | None = None
         self.setMouseTracking(True)
         self.setObjectName("seek-slider")
         self.setMinimumHeight(26)
@@ -45,7 +42,6 @@ class WaveformSeekBar(QWidget):
     def setMaximum(self, value: int) -> None:  # noqa: N802
         self._maximum = max(1, value)
         self._value = min(self._value, self._maximum)
-        self._invalidate_waveform_cache()
         self.update()
 
     def setValue(self, value: int) -> None:  # noqa: N802
@@ -73,7 +69,6 @@ class WaveformSeekBar(QWidget):
         self._accent = QColor(accent)
         self._theme_mode = theme_mode
         self._rounded = rounded
-        self._invalidate_waveform_cache()
         self.update()
 
     def set_waveform_state(
@@ -95,7 +90,6 @@ class WaveformSeekBar(QWidget):
         self._waveform_bins = waveform_bins
         self._waveform_known_position_ms = waveform_known_position_ms
         self._waveform_mode = waveform_mode
-        self._invalidate_waveform_cache()
         self.update()
 
     def set_waveform_enabled(self, enabled: bool) -> None:
@@ -103,7 +97,6 @@ class WaveformSeekBar(QWidget):
         if enabled == self._waveform_enabled:
             return
         self._waveform_enabled = enabled
-        self._invalidate_waveform_cache()
         self.update()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
@@ -158,14 +151,11 @@ class WaveformSeekBar(QWidget):
                 painter.drawRoundedRect(buffered_rect, groove_radius, groove_radius)
 
         if self._should_paint_waveform():
-            self._ensure_waveform_cache(
-                groove_rect=groove_rect,
-                played_color=played_color,
-                pending_color=unplayed_wave_color,
-            )
             self._paint_waveform(
                 painter,
                 groove_rect=groove_rect,
+                played_color=played_color,
+                pending_color=unplayed_wave_color,
             )
         else:
             played_ratio = max(0.0, min(1.0, self._value / self._maximum))
@@ -196,76 +186,9 @@ class WaveformSeekBar(QWidget):
         painter: QPainter,
         *,
         groove_rect: QRectF,
-    ) -> None:
-        if self._waveform_pending_cache is None or self._waveform_played_cache is None:
-            return
-        painter.drawPixmap(0, 0, self._waveform_pending_cache)
-        played_ratio = max(0.0, min(1.0, self._value / self._maximum))
-        played_width = int(round(groove_rect.width() * played_ratio))
-        if played_width <= 0:
-            return
-        left = int(groove_rect.left())
-        top = int(groove_rect.top())
-        height = int(round(groove_rect.height()))
-        painter.drawPixmap(
-            left,
-            top,
-            self._waveform_played_cache,
-            left,
-            top,
-            played_width,
-            height,
-        )
-
-    def resizeEvent(self, event) -> None:
-        self._invalidate_waveform_cache()
-        super().resizeEvent(event)
-
-    def _invalidate_waveform_cache(self) -> None:
-        self._waveform_cache_key = None
-        self._waveform_pending_cache = None
-        self._waveform_played_cache = None
-
-    def _ensure_waveform_cache(
-        self,
-        *,
-        groove_rect: QRectF,
         played_color: QColor,
         pending_color: QColor,
     ) -> None:
-        cache_key = (
-            self.size().width(),
-            self.size().height(),
-            self._maximum,
-            self._theme_mode,
-            self._rounded,
-            self._waveform_mode,
-            self._waveform_known_position_ms,
-            self._accent.name(),
-            id(self._waveform_bins) if self._waveform_bins else "placeholder",
-        )
-        if cache_key == self._waveform_cache_key:
-            return
-        self._waveform_cache_key = cache_key
-        self._waveform_pending_cache = self._render_waveform_pixmap(
-            groove_rect=groove_rect,
-            waveform_color=pending_color,
-        )
-        self._waveform_played_cache = self._render_waveform_pixmap(
-            groove_rect=groove_rect,
-            waveform_color=played_color,
-        )
-
-    def _render_waveform_pixmap(
-        self,
-        *,
-        groove_rect: QRectF,
-        waveform_color: QColor,
-    ) -> QPixmap:
-        pixmap = QPixmap(self.size())
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         is_placeholder = not self._waveform_bins
         bins = self._waveform_bins or self._PLACEHOLDER_BINS
         known_ratio = (
@@ -282,6 +205,8 @@ class WaveformSeekBar(QWidget):
         waveform_base_height = 9.0
         half_height = max(5.0, waveform_base_height * 2.15)
         pen_width = max(1.0, known_width / max(known_bins, 120))
+        played_limit = max(0.0, min(1.0, self._value / self._maximum)) * groove_rect.width()
+
         for index in range(known_bins):
             amplitude = max(0.08, min(1.0, bins[index]))
             if known_bins == 1:
@@ -289,9 +214,10 @@ class WaveformSeekBar(QWidget):
             else:
                 x = groove_rect.left() + known_width * (index / (known_bins - 1))
             height = half_height * amplitude
+            color = played_color if (x - groove_rect.left()) <= played_limit else pending_color
             painter.setPen(
                 QPen(
-                    waveform_color,
+                    color,
                     pen_width,
                     Qt.PenStyle.SolidLine,
                     Qt.PenCapStyle.RoundCap,
@@ -314,8 +240,6 @@ class WaveformSeekBar(QWidget):
                 painter.setPen(Qt.PenStyle.NoPen)
                 painter.setBrush(tail_color)
                 painter.drawRoundedRect(tail_rect, 4, 4)
-        painter.end()
-        return pixmap
 
     def _groove_rect(self) -> QRectF:
         margin_x = 10.0
