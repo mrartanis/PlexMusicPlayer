@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import QEvent, Qt, QTimer
+from PySide6.QtCore import QEvent, QPointF, Qt, QTimer
 from PySide6.QtGui import QCloseEvent, QMouseEvent, QResizeEvent, QShowEvent, QWheelEvent
 
 
@@ -72,6 +72,8 @@ class MainWindowWindowingMixin:
             return False
         if watched in {title_bar, title_drag_handle}:
             if event.type() == QEvent.Type.MouseButtonDblClick:
+                self._pending_system_move = False
+                self._manual_window_drag_active = False
                 self._toggle_maximized()
                 return True
             if event.type() == QEvent.Type.MouseButtonPress:
@@ -81,8 +83,34 @@ class MainWindowWindowingMixin:
                     and mouse_event.button() == Qt.MouseButton.LeftButton
                     and not self.isMaximized()
                 ):
-                    self._start_system_move()
+                    self._pending_system_move = True
+                    self._pending_system_move_origin = mouse_event.globalPosition()
+                    self._manual_window_drag_active = False
+                    self._manual_window_drag_origin = QPointF()
                     return True
+            if event.type() == QEvent.Type.MouseMove:
+                mouse_event = self._as_mouse_event(event)
+                if self._manual_window_drag_active and mouse_event is not None:
+                    self._apply_manual_window_drag(mouse_event)
+                    return True
+                if (
+                    self._pending_system_move
+                    and mouse_event is not None
+                    and bool(mouse_event.buttons() & Qt.MouseButton.LeftButton)
+                    and not self.isMaximized()
+                ):
+                    distance = (
+                        mouse_event.globalPosition() - self._pending_system_move_origin
+                    ).manhattanLength()
+                    if distance < self._drag_threshold():
+                        return True
+                    self._pending_system_move = False
+                    if not self._start_system_move():
+                        self._start_manual_window_drag(mouse_event)
+                    return True
+            if event.type() == QEvent.Type.MouseButtonRelease:
+                self._pending_system_move = False
+                self._finish_manual_window_drag()
             return False
         if watched in {
             player_panel_frame,
@@ -99,8 +127,34 @@ class MainWindowWindowingMixin:
                     and mouse_event.button() == Qt.MouseButton.LeftButton
                     and not self.isMaximized()
                 ):
-                    self._start_system_move()
+                    self._pending_system_move = True
+                    self._pending_system_move_origin = mouse_event.globalPosition()
+                    self._manual_window_drag_active = False
+                    self._manual_window_drag_origin = QPointF()
                     return True
+            if event.type() == QEvent.Type.MouseMove:
+                mouse_event = self._as_mouse_event(event)
+                if self._manual_window_drag_active and mouse_event is not None:
+                    self._apply_manual_window_drag(mouse_event)
+                    return True
+                if (
+                    self._pending_system_move
+                    and mouse_event is not None
+                    and bool(mouse_event.buttons() & Qt.MouseButton.LeftButton)
+                    and not self.isMaximized()
+                ):
+                    distance = (
+                        mouse_event.globalPosition() - self._pending_system_move_origin
+                    ).manhattanLength()
+                    if distance < self._drag_threshold():
+                        return True
+                    self._pending_system_move = False
+                    if not self._start_system_move():
+                        self._start_manual_window_drag(mouse_event)
+                    return True
+            if event.type() == QEvent.Type.MouseButtonRelease:
+                self._pending_system_move = False
+                self._finish_manual_window_drag()
             return False
         if watched is settings_popup:
             if event.type() == QEvent.Type.Leave and settings_popup is not None:
@@ -160,3 +214,22 @@ class MainWindowWindowingMixin:
 
     def _is_macos_window_controls(self) -> bool:
         return sys.platform == "darwin"
+
+    def _drag_threshold(self) -> int:
+        from PySide6.QtWidgets import QApplication
+
+        return max(1, QApplication.startDragDistance())
+
+    def _start_manual_window_drag(self, mouse_event: QMouseEvent) -> None:
+        self._manual_window_drag_active = True
+        self._manual_window_drag_origin = mouse_event.globalPosition()
+        self._manual_window_drag_window_pos = self.pos()
+        self._apply_manual_window_drag(mouse_event)
+
+    def _apply_manual_window_drag(self, mouse_event: QMouseEvent) -> None:
+        delta = mouse_event.globalPosition() - self._manual_window_drag_origin
+        target = self._manual_window_drag_window_pos + delta.toPoint()
+        self.move(target)
+
+    def _finish_manual_window_drag(self) -> None:
+        self._manual_window_drag_active = False
