@@ -7,7 +7,7 @@ from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 
 from app.application.error_presenter import user_facing_error_message
 from app.application.playback_service import PlaybackService, PlaybackSnapshot
-from app.domain import Logger, Track
+from app.domain import Logger, RepeatMode, Track
 from app.domain.errors import DomainError
 
 
@@ -108,6 +108,9 @@ class PlaybackController(QObject):
 
     def set_shuffle_enabled(self, enabled: bool) -> None:
         self._dispatch(lambda: self._playback_service.set_shuffle_enabled(enabled))
+
+    def set_repeat_mode(self, repeat_mode: RepeatMode) -> None:
+        self._dispatch(lambda: self._playback_service.set_repeat_mode(repeat_mode))
 
     def set_waveform_progress_enabled(self, enabled: bool) -> None:
         self._dispatch(lambda: self._playback_service.set_waveform_progress_enabled(enabled))

@@ -1539,6 +1539,33 @@ def test_snapshot_includes_stream_proxy_waveform_state() -> None:
     assert snapshot.state.waveform == proxy.waveform_state
 
 
+def test_windows_disables_waveform_proxy_and_state(monkeypatch: pytest.MonkeyPatch) -> None:
+    proxy = FakeStreamProxyService()
+    http_track = Track(
+        id="http-one",
+        title="HTTP One",
+        artists=("Artist",),
+        album_id="album-1",
+        duration_ms=120_000,
+        stream_ref="https://example.test/http-one.mp3",
+        stream_ref_cached_at=datetime.now(tz=UTC),
+    )
+    monkeypatch.setattr(PlaybackService, "_WAVEFORM_SUPPORTED", False)
+    service = PlaybackService(
+        playback_engine=FakePlaybackEngine(),
+        logger=TestLogger(),
+        stream_proxy_service=proxy,
+        waveform_progress_enabled=True,
+    )
+
+    snapshot = service.replace_queue((http_track,), start_index=0, source_type="test")
+    disabled_snapshot = service.set_waveform_progress_enabled(True)
+
+    assert proxy.created_sessions == []
+    assert snapshot.state.waveform == WaveformState()
+    assert disabled_snapshot.state.waveform == WaveformState()
+
+
 def test_cached_waveform_uses_engine_duration_for_full_render() -> None:
     engine = FakePlaybackEngine()
     track = Track(

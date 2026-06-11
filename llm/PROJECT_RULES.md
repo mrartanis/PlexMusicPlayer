@@ -8,7 +8,7 @@ Build a local desktop Plex music player with a classic standalone-player UX.
 
 Core product constraints:
 
-- Cross-platform first: macOS and Linux are required.
+- Cross-platform first: macOS and Linux are required, and Windows is a supported release platform.
 - Base UI stack: `PySide6` with Qt Widgets.
 - Playback must use a native backend, not Python audio decoding for the main audio path.
 - The final app must be distributable as a self-contained desktop bundle.
@@ -93,6 +93,10 @@ assets/
 - Bundle reproducible CA data for packaged HTTPS traffic.
 - Packaged app naming must stay `Plex Music Player` / `PlexMusicPlayer`.
 - Icons used by packaging must come from `assets/`, not archived source trees.
+- Windows release artifacts are `portable zip` and installer.
+- Windows builds should bundle `libmpv` and verify the packaged backend in CI/release automation.
+- Windows installer uninstall must remove `%LOCALAPPDATA%\PlexMusicPlayer\PlexMusicPlayer`.
+- Waveform progress is unavailable on Windows and should stay disabled there unless the playback/proxy path is redesigned first.
 
 ## Testing Rules
 

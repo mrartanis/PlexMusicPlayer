@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import random
+import sys
 from collections.abc import Callable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, replace
@@ -80,6 +81,7 @@ class PlaybackService:
     _STATION_QUEUE_MAX_LENGTH = 1000
     _STATION_QUEUE_PERSIST_LENGTH = 50
     _POSITION_PERSIST_INTERVAL_SECONDS = 5.0
+    _WAVEFORM_SUPPORTED = sys.platform != "win32"
 
     def __init__(
         self,
@@ -99,7 +101,7 @@ class PlaybackService:
         self._library_cache_repo = library_cache_repo
         self._playback_state_repo = playback_state_repo
         self._stream_proxy_service = stream_proxy_service
-        self._waveform_progress_enabled = waveform_progress_enabled
+        self._waveform_progress_enabled = waveform_progress_enabled and self._WAVEFORM_SUPPORTED
         self._randomizer = randomizer or random.Random()
         self._queue: list[QueueItem] = []
         self._active_index: int | None = None
@@ -470,7 +472,7 @@ class PlaybackService:
         return self.snapshot()
 
     def set_waveform_progress_enabled(self, enabled: bool) -> PlaybackSnapshot:
-        self._waveform_progress_enabled = enabled
+        self._waveform_progress_enabled = enabled and self._WAVEFORM_SUPPORTED
         return self.snapshot()
 
     def set_shuffle_enabled(self, enabled: bool) -> PlaybackSnapshot:

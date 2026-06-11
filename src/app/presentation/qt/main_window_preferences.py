@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from os import environ
 
 from PySide6.QtCore import QPoint, Qt
@@ -24,6 +25,8 @@ from app.presentation.qt.main_window_styles import build_main_window_stylesheet
 
 
 class MainWindowPreferencesMixin:
+    _WAVEFORM_SUPPORTED = sys.platform != "win32"
+
     def _build_settings_popup(self) -> None:
         popup_shell = QWidget(
             None,
@@ -118,31 +121,32 @@ class MainWindowPreferencesMixin:
             language_row.addWidget(button)
         layout.addLayout(language_row)
 
-        self._settings_waveform_progress_label = QLabel(
-            self._t("settings.section.waveform_progress")
-        )
-        self._settings_waveform_progress_label.setObjectName("settings-section")
-        layout.addWidget(self._settings_waveform_progress_label)
-        waveform_row = QHBoxLayout()
-        waveform_row.setContentsMargins(0, 0, 0, 0)
-        waveform_row.setSpacing(6)
         self._waveform_progress_buttons: dict[bool, QPushButton] = {}
-        for enabled, title in (
-            (False, self._t("settings.option.waveform_progress.disabled")),
-            (True, self._t("settings.option.waveform_progress.enabled")),
-        ):
-            button = QPushButton(title)
-            button.setObjectName("quality-option")
-            button.setCheckable(True)
-            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-            button.clicked.connect(
-                lambda checked=False, selected=enabled: self._set_waveform_progress_enabled(
-                    selected
-                )
+        if self._WAVEFORM_SUPPORTED:
+            self._settings_waveform_progress_label = QLabel(
+                self._t("settings.section.waveform_progress")
             )
-            self._waveform_progress_buttons[enabled] = button
-            waveform_row.addWidget(button)
-        layout.addLayout(waveform_row)
+            self._settings_waveform_progress_label.setObjectName("settings-section")
+            layout.addWidget(self._settings_waveform_progress_label)
+            waveform_row = QHBoxLayout()
+            waveform_row.setContentsMargins(0, 0, 0, 0)
+            waveform_row.setSpacing(6)
+            for enabled, title in (
+                (False, self._t("settings.option.waveform_progress.disabled")),
+                (True, self._t("settings.option.waveform_progress.enabled")),
+            ):
+                button = QPushButton(title)
+                button.setObjectName("quality-option")
+                button.setCheckable(True)
+                button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+                button.clicked.connect(
+                    lambda checked=False, selected=enabled: self._set_waveform_progress_enabled(
+                        selected
+                    )
+                )
+                self._waveform_progress_buttons[enabled] = button
+                waveform_row.addWidget(button)
+            layout.addLayout(waveform_row)
 
         self._logout_button = QPushButton(self._t("action.logout"))
         self._logout_button.setObjectName("settings-action")
@@ -240,6 +244,8 @@ class MainWindowPreferencesMixin:
         )
 
     def _set_waveform_progress_enabled(self, enabled: bool) -> None:
+        if not self._WAVEFORM_SUPPORTED:
+            enabled = False
         self._container.services.settings_service.save_waveform_progress_enabled(enabled)
         self._render_waveform_progress_enabled(enabled)
         if hasattr(self, "_seek_slider"):
@@ -285,10 +291,12 @@ class MainWindowPreferencesMixin:
         self._render_language_preference(self._stored_language_preference())
         self._render_waveform_progress_enabled(
             self._container.services.settings_service.load_waveform_progress_enabled()
+            and self._WAVEFORM_SUPPORTED
         )
         if hasattr(self, "_seek_slider"):
             self._seek_slider.set_waveform_enabled(
                 self._container.services.settings_service.load_waveform_progress_enabled()
+                and self._WAVEFORM_SUPPORTED
             )
         self._normalize_settings_option_button_widths()
         self._refresh_localized_texts()
