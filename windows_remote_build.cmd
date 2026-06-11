@@ -9,6 +9,7 @@ for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-ChildItem -Path 'C
 if not defined MPV_DLL (
   set "MPV_ARCHIVE=%REPO%\build\mpv-dev.7z"
   set "MPV_DIR=%REPO%\build\mpv-dev"
+  if not exist "%REPO%\build" mkdir "%REPO%\build"
   powershell -NoProfile -Command "$archive='!MPV_ARCHIVE!'; $dir='!MPV_DIR!'; $release = Invoke-RestMethod -Uri 'https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest'; $asset = $release.assets | Where-Object { $_.name -like 'mpv-dev-x86_64-*.7z' } | Select-Object -First 1; if (-not $asset) { throw 'Unable to locate mpv dev asset' }; Invoke-WebRequest -Uri $asset.browser_download_url -OutFile $archive; if (Test-Path $dir) { Remove-Item -LiteralPath $dir -Recurse -Force }; New-Item -ItemType Directory -Force -Path $dir | Out-Null"
   7z x "!MPV_ARCHIVE!" "-o!MPV_DIR!" >nul || exit /b 1
   for /f "delims=" %%I in ('powershell -NoProfile -Command "Get-ChildItem -Path '!MPV_DIR!' -Include 'libmpv-2.dll','mpv-2.dll' -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName"') do set "MPV_DLL=%%I"
