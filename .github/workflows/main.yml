@@ -143,7 +143,7 @@ jobs:
         run: |
           choco install innosetup -y --no-progress
           $release = Invoke-RestMethod -Uri "https://api.github.com/repos/shinchiro/mpv-winbuild-cmake/releases/latest"
-          $asset = $release.assets | Where-Object { $_.name -match '^mpv-dev-x86_64-[^.]+.*\.7z$' } | Select-Object -First 1
+          $asset = $release.assets | Where-Object { $_.name -like 'mpv-dev-x86_64-*.7z' } | Select-Object -First 1
           if (-not $asset) {
             throw "Unable to locate mpv dev asset in latest shinchiro release"
           }
