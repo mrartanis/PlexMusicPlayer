@@ -10,7 +10,8 @@ Desktop Plex music player built as a Plex-focused fork of `YaYmp`.
 - `Artists`, `Albums`, and `Playlists` browsing with incremental loading
 - `Random Mix` that starts fast and keeps a short random tail in the queue
 - Persistent queue, artwork cache, waveform preview, shuffle/repeat, and system media controls
-- macOS and Linux desktop builds via `Nuitka`
+  - waveform preview is unavailable on Windows and is not planned there
+- macOS, Linux, and Windows desktop builds via `Nuitka`
 
 ## Screenshots
 
@@ -75,10 +76,23 @@ Build macOS:
 ./scripts/build_nuitka_macos.sh
 ```
 
-Artifacts are built as `PlexMusicPlayer` / `Plex Music Player.app`, with the Plex player icon bundled from `assets/`.
+Build Windows portable zip + installer:
+
+```powershell
+.\scripts\build_nuitka_windows.ps1
+Compress-Archive -Path "build\nuitka\PlexMusicPlayer.dist\*" -DestinationPath "dist\PlexMusicPlayer-windows-x86_64.zip" -Force
+.\scripts\build_windows_installer.ps1
+```
+
+Windows packaging expects `mpv-2.dll` or `libmpv-2.dll`. Set `PLEX_MUSIC_PLAYER_MPV_LIBRARY` if it is not discoverable automatically.
+Windows installer builds through Inno Setup 6.
+Windows installer uninstall removes the app and `%LOCALAPPDATA%\PlexMusicPlayer\PlexMusicPlayer` entirely, including config, data, cache, and logs.
+
+Artifacts are built as `PlexMusicPlayer`, `Plex Music Player.app`, a Windows portable zip, and a Windows installer, with the Plex player icon bundled from `assets/`.
 
 ## Current Notes
 
 - The app uses `python-mpv` for playback and `plexapi` for library/auth access.
 - Browser pages default to smaller incremental loads to keep the UI responsive on large libraries.
 - Queue persistence is stored in SQLite tables, not a single serialized JSON blob.
+- Windows packaged builds bundle `libmpv`, verify the packaged MPV backend in CI, and disable the waveform/proxy path at runtime.

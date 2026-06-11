@@ -10,7 +10,11 @@ from app.infrastructure.persistence.file_artwork_cache import FileArtworkCache
 from app.presentation.qt.system_media import (
     LinuxMprisIntegration,
     MacOSSystemMediaIntegration,
-    NoopSystemMediaIntegration,
+    WindowsSystemMediaIntegration,
+    _repeat_mode_from_windows,
+    _timedelta_like_to_milliseconds,
+    _windows_playback_status,
+    _windows_repeat_mode,
     build_system_media_integration,
 )
 
@@ -86,7 +90,7 @@ def test_build_system_media_integration_selects_platform(monkeypatch, qtbot, tmp
             window=window,
             logger=logger,
         ),
-        NoopSystemMediaIntegration,
+        WindowsSystemMediaIntegration,
     )
 
 
@@ -137,3 +141,43 @@ def test_linux_mpris_integration_builds_metadata_with_cached_art(qtbot, tmp_path
     assert metadata["xesam:artist"] == ["Artist"]
     assert metadata["mpris:length"] == 180_000_000
     assert metadata["mpris:artUrl"] == Path(cache_path).as_uri()
+
+
+class StubWindowsPlaybackStatus:
+    PLAYING = "playing"
+    PAUSED = "paused"
+    STOPPED = "stopped"
+
+
+class StubWindowsRepeatMode:
+    TRACK = "track"
+    LIST = "list"
+    NONE = "none"
+
+
+class TimedeltaLike:
+    def __init__(self, seconds: float) -> None:
+        self._seconds = seconds
+
+    def total_seconds(self) -> float:
+        return self._seconds
+
+
+def test_windows_playback_status_mapping() -> None:
+    assert _windows_playback_status(PlaybackStatus.PLAYING, StubWindowsPlaybackStatus) == "playing"
+    assert _windows_playback_status(PlaybackStatus.PAUSED, StubWindowsPlaybackStatus) == "paused"
+    assert _windows_playback_status(PlaybackStatus.STOPPED, StubWindowsPlaybackStatus) == "stopped"
+
+
+def test_windows_repeat_mode_mapping() -> None:
+    assert _windows_repeat_mode(RepeatMode.ONE, StubWindowsRepeatMode) == "track"
+    assert _windows_repeat_mode(RepeatMode.ALL, StubWindowsRepeatMode) == "list"
+    assert _windows_repeat_mode(RepeatMode.OFF, StubWindowsRepeatMode) == "none"
+    assert _repeat_mode_from_windows("track", StubWindowsRepeatMode) == RepeatMode.ONE
+    assert _repeat_mode_from_windows("list", StubWindowsRepeatMode) == RepeatMode.ALL
+    assert _repeat_mode_from_windows("none", StubWindowsRepeatMode) == RepeatMode.OFF
+
+
+def test_timedelta_like_to_milliseconds() -> None:
+    assert _timedelta_like_to_milliseconds(TimedeltaLike(12.345)) == 12_345
+    assert _timedelta_like_to_milliseconds(object()) == 0
