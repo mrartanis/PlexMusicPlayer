@@ -14,6 +14,7 @@ $iconSourcePath = Join-Path $projectRoot "assets\plex_music_player_256.png"
 $iconBuildScript = Join-Path $projectRoot "tools\build_windows_icon.py"
 $setupIconPath = Join-Path $outputDir "plex_music_player.ico"
 $bundledPrimaryDllName = ""
+$mpvLibraryDir = ""
 $appVersion = ""
 $windowsVersion = ""
 $nuitkaArgs = @()
@@ -78,6 +79,8 @@ if ([string]::IsNullOrWhiteSpace($mpvLibrary) -or -not (Test-Path $mpvLibrary)) 
 }
 
 $bundledPrimaryDllName = [System.IO.Path]::GetFileName($mpvLibrary)
+$mpvLibrary = (Resolve-Path $mpvLibrary).Path
+$mpvLibraryDir = Split-Path -Parent $mpvLibrary
 
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
@@ -105,6 +108,7 @@ $nuitkaArgs = @(
     "--include-package=app",
     "--include-package-data=app.presentation.qt",
     "--include-data-files=$mpvLibrary=lib/$bundledPrimaryDllName",
+    "--include-data-files=$mpvLibraryDir\*.dll=lib/",
     "--windows-icon-from-ico=$setupIconPath",
     "--windows-company-name=Plex Music Player",
     "--windows-product-name=$displayName",
@@ -123,6 +127,10 @@ if ($nuitkaVerbose) {
 if (Get-Command "cl.exe" -ErrorAction SilentlyContinue) {
     $nuitkaArgs = @("--msvc=latest") + $nuitkaArgs
 }
+
+Write-Host "Building Windows bundle with Nuitka"
+Write-Host "Using MPV library: $mpvLibrary"
+Write-Host "Output directory: $distDir"
 
 & $venvPython -u -m nuitka @nuitkaArgs
 if ($LASTEXITCODE -ne 0) {
